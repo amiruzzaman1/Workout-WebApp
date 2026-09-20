@@ -1,10 +1,16 @@
+import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
+import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
+import { SpaceGrotesk_500Medium } from '@expo-google-fonts/space-grotesk/500Medium';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
+import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { Loading } from '../src/components/ui';
 import { StoreProvider, useStore } from '../src/lib/store';
-import { C } from '../src/lib/theme';
+import { C, F } from '../src/lib/theme';
 
 function Gate() {
   const { ready, session, profile } = useStore();
@@ -25,17 +31,22 @@ function Gate() {
         screenOptions={{
           headerStyle: { backgroundColor: C.bg },
           headerTintColor: C.text,
-          headerTitleStyle: { fontWeight: '700' },
+          headerShadowVisible: false,
+          headerTitleStyle: { fontFamily: F.displayMed, fontSize: 17 },
+          headerBackTitle: 'Back',
           contentStyle: { backgroundColor: C.bg },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ title: 'Your profile' }} />
-        <Stack.Screen name="exercise/[id]" options={{ title: 'Exercise' }} />
-        <Stack.Screen name="machine/[key]" options={{ title: 'Machine guide' }} />
-        <Stack.Screen name="session/[day]/[idx]" options={{ title: 'Session' }} />
-        <Stack.Screen name="custom-exercise" options={{ title: 'Add my own exercise' }} />
+        <Stack.Screen name="onboarding" options={{ title: 'Profile' }} />
+        <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
+        <Stack.Screen name="machine/[key]" options={{ title: '' }} />
+        <Stack.Screen name="session/[day]/[idx]" options={{ title: 'Edit session' }} />
+        <Stack.Screen name="workout/[day]/[idx]" options={{ title: 'Workout' }} />
+        <Stack.Screen name="custom-exercise" options={{ title: 'New exercise' }} />
+        <Stack.Screen name="food/add" options={{ title: 'Add food' }} />
+        <Stack.Screen name="nutrition" options={{ title: 'Targets' }} />
       </Stack>
       {!ready && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
@@ -47,6 +58,8 @@ function Gate() {
 }
 
 export default function RootLayout() {
+  const [loaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, SpaceGrotesk_500Medium, SpaceGrotesk_700Bold });
+  if (!loaded) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   return (
     <StoreProvider>
       <StatusBar style="light" />

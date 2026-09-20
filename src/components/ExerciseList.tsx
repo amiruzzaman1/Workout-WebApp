@@ -1,15 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { allExercises, Exercise, isAvailable, MUSCLE_GROUPS, titleCase } from '../lib/exercises';
 import { useStore } from '../lib/store';
 import { C } from '../lib/theme';
 import { ExerciseThumb } from './ExerciseAnimation';
-import { Chip, Input, Row } from './ui';
+import { Chip, Input, ListRow, Row } from './ui';
+import { F } from '../lib/theme';
 
 const LEVELS = ['beginner', 'intermediate', 'expert'] as const;
 
-export function ExerciseList({ onPick, header }: { onPick: (e: Exercise) => void; header?: React.ReactElement }) {
+export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) => void; header?: React.ReactElement; top?: boolean }) {
   const { equipment, customExercises } = useStore();
+  const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<string | null>(null);
   const [onlyMine, setOnlyMine] = useState(true);
@@ -35,10 +38,10 @@ export function ExerciseList({ onPick, header }: { onPick: (e: Exercise) => void
       keyExtractor={(e) => e.id}
       initialNumToRender={20}
       style={{ flex: 1, backgroundColor: C.bg }}
-      contentContainerStyle={{ padding: 16, gap: 8, width: '100%', maxWidth: 760, alignSelf: 'center' }}
+      contentContainerStyle={{ paddingHorizontal: 20, paddingTop: top ? insets.top + 24 : 16, paddingBottom: 64, width: '100%', maxWidth: 720, alignSelf: 'center' }}
       keyboardShouldPersistTaps="handled"
       ListHeaderComponent={
-        <View style={{ gap: 10, marginBottom: 6 }}>
+        <View style={{ gap: 12, marginBottom: 8 }}>
           {header}
           <Input placeholder="Search exercises…" value={q} onChangeText={setQ} />
           <Row wrap>
@@ -48,30 +51,21 @@ export function ExerciseList({ onPick, header }: { onPick: (e: Exercise) => void
             ))}
           </Row>
           <Row wrap>
-            <Chip label="✓ My gym only" active={onlyMine} onPress={() => setOnlyMine(!onlyMine)} />
+            <Chip label="My gym only" active={onlyMine} onPress={() => setOnlyMine(!onlyMine)} />
             <Chip label="Beginner" active={beginnerOnly} onPress={() => setBeginnerOnly(!beginnerOnly)} />
             <Chip label="Stretches" active={includeStretch} onPress={() => setIncludeStretch(!includeStretch)} />
           </Row>
-          <Text style={{ color: C.muted }}>{list.length} exercises</Text>
+          <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 13, marginTop: 4 }}>{list.length} exercises</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <Pressable
+        <ListRow
           onPress={() => onPick(item)}
-          style={({ pressed }) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12,
-            backgroundColor: pressed ? C.card2 : C.card, borderWidth: 1, borderColor: C.border,
-          })}
-        >
-          <ExerciseThumb exercise={item} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
-            <Text style={{ color: C.muted, fontSize: 13 }}>
-              {item.custom ? 'My exercise · ' : ''}
-              {item.primary.map(titleCase).join(', ')} · {titleCase(item.equipment)} · {titleCase(item.level)}
-            </Text>
-          </View>
-        </Pressable>
+          left={<ExerciseThumb exercise={item} />}
+          title={item.name}
+          subtitle={`${item.custom ? 'My exercise · ' : ''}${item.primary.map(titleCase).join(', ')} · ${titleCase(item.equipment)} · ${titleCase(item.level)}`}
+          right={<Text style={{ color: C.faint, fontSize: 18 }}>›</Text>}
+        />
       )}
     />
   );

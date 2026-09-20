@@ -1,11 +1,11 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Switch, Text, View } from 'react-native';
 import { ExerciseAnimation, ExerciseThumb } from '../../src/components/ExerciseAnimation';
-import { Bullets, Card, H1, H2, P, Row, Screen } from '../../src/components/ui';
+import { Bullets, Eyebrow, H1, ListRow, P, Row, Screen, Section } from '../../src/components/ui';
 import { MACHINE_BY_KEY } from '../../src/data/machines';
 import { getExercise, titleCase } from '../../src/lib/exercises';
 import { useStore } from '../../src/lib/store';
-import { C } from '../../src/lib/theme';
+import { C, F } from '../../src/lib/theme';
 
 export default function MachineDetail() {
   const { key } = useLocalSearchParams<{ key: string }>();
@@ -14,44 +14,44 @@ export default function MachineDetail() {
   const m = MACHINE_BY_KEY[String(key)];
   if (!m) return <Screen><P>Machine not found.</P></Screen>;
   const exs = m.exercises.map(getExercise).filter((e): e is NonNullable<typeof e> => !!e);
+  const on = equipment.has(m.key);
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: m.name }} />
+      <Stack.Screen options={{ title: '' }} />
       {exs[0] && <ExerciseAnimation exercise={exs[0]} />}
-      <H1>{m.name}</H1>
-      {m.muscles.length > 0 && <P muted>Works: {m.muscles.map(titleCase).join(', ')}</P>}
-      <Card>
-        <Row style={{ justifyContent: 'space-between' }}>
-          <P style={{ flex: 1 }}>Available at {profile?.gym_name || 'my gym'}</P>
-          <Switch value={equipment.has(m.key)} onValueChange={() => toggleEquipment(m.key)} trackColor={{ true: C.accent, false: C.border }} thumbColor="#fff" {...({ activeThumbColor: "#fff" } as any)} />
-        </Row>
-      </Card>
-      <P>{m.summary}</P>
+      <View style={{ gap: 6, marginTop: 8 }}>
+        <Eyebrow>Machine guide{m.muscles.length ? ` · ${m.muscles.map(titleCase).join(', ')}` : ''}</Eyebrow>
+        <H1 style={{ fontSize: 32, lineHeight: 36 }}>{m.name}</H1>
+        <P muted>{m.summary}</P>
+      </View>
+      <Row style={{ justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.border, marginTop: 8 }}>
+        <Text style={{ color: C.text, fontFamily: F.bodyMed, flex: 1 }}>At {profile?.gym_name || 'my gym'}</Text>
+        <Switch value={on} onValueChange={() => toggleEquipment(m.key)} trackColor={{ true: C.inverse, false: C.border }}
+          thumbColor={on ? C.inverseText : C.muted} {...({ activeThumbColor: C.inverseText } as any)} />
+      </Row>
 
-      {m.setup.length > 0 && (<><H2>1. Set it up</H2><Card><Bullets items={m.setup} numbered /></Card></>)}
-      {m.howTo.length > 0 && (<><H2>2. Do the movement</H2><Card><Bullets items={m.howTo} numbered /></Card></>)}
-      {m.mistakes.length > 0 && (<><H2>Common mistakes</H2><Card><Bullets items={m.mistakes} /></Card></>)}
-      {m.tip && <Card style={{ borderColor: C.accent }}><P>💡 {m.tip}</P></Card>}
+      {m.setup.length > 0 && <Section title="Step 1: set it up"><Bullets items={m.setup} numbered /></Section>}
+      {m.howTo.length > 0 && <Section title="Step 2: do the movement"><Bullets items={m.howTo} numbered /></Section>}
+      {m.mistakes.length > 0 && <Section title="Avoid"><Bullets items={m.mistakes} /></Section>}
+      {m.tip && (
+        <View style={{ borderLeftWidth: 2, borderLeftColor: C.inverse, paddingLeft: 12, marginTop: 16 }}>
+          <Eyebrow>Tip</Eyebrow>
+          <P>{m.tip}</P>
+        </View>
+      )}
 
       {exs.length > 0 && (
-        <>
-          <H2>Exercises on this machine</H2>
-          <View style={{ gap: 8 }}>
+        <Section title="Exercises on this machine">
+          <View>
             {exs.map((e) => (
-              <Pressable key={e.id} onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }}>
-                <ExerciseThumb exercise={e} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.text, fontWeight: '700' }}>{e.name}</Text>
-                  <Text style={{ color: C.muted, fontSize: 13 }}>{e.primary.map(titleCase).join(', ')}</Text>
-                </View>
-              </Pressable>
+              <ListRow key={e.id} onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)} left={<ExerciseThumb exercise={e} />}
+                title={e.name} subtitle={e.primary.map(titleCase).join(', ')} right={<Text style={{ color: C.faint, fontSize: 18 }}>›</Text>} />
             ))}
           </View>
-        </>
+        </Section>
       )}
-      <P muted style={{ fontSize: 13 }}>Every brand is slightly different — most machines have an instruction sticker, and Jetts staff can show you during staffed hours.</P>
+      <P muted style={{ fontSize: 13, marginTop: 16 }}>Every brand is slightly different. Most machines have an instruction sticker, and Jetts staff can show you during staffed hours.</P>
     </Screen>
   );
 }

@@ -8,7 +8,7 @@ import { confirm } from '../../../src/lib/confirm';
 import { Exercise, getExercise, titleCase } from '../../../src/lib/exercises';
 import { alternativesFor, DAY_NAMES, PlanData, PlanItem, PlanSession, uid } from '../../../src/lib/planner';
 import { useStore } from '../../../src/lib/store';
-import { C } from '../../../src/lib/theme';
+import { C, F } from '../../../src/lib/theme';
 
 export default function SessionEditor() {
   const params = useLocalSearchParams<{ day: string; idx: string }>();
@@ -86,23 +86,23 @@ export default function SessionEditor() {
               <Pressable onPress={() => e && router.push(`/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                 {e && <ExerciseThumb exercise={e} />}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.text, fontWeight: '700', fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId} ›</Text>
-                  <Text style={{ color: C.muted, fontSize: 13 }}>{e?.primary.map(titleCase).join(', ')} · tap for animation & how-to</Text>
+                  <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId} ›</Text>
+                  <Text style={{ color: C.muted, fontSize: 13, fontFamily: F.body }}>{e?.primary.map(titleCase).join(', ')} · tap for animation & how-to</Text>
                 </View>
               </Pressable>
 
               <Row style={{ marginTop: 6 }}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Label>Sets</Label>
                   <Input value={String(it.sets)} keyboardType="number-pad"
                     onChangeText={(t) => updateItem(it.uid, { sets: Number(t.replace(/\D/g, '')) || 0 }, false)}
                     onBlur={() => commit(draft)} />
                 </View>
-                <View style={{ flex: 2 }}>
+                <View style={{ flex: 2, minWidth: 0 }}>
                   <Label>Reps / time</Label>
                   <Input value={it.reps} onChangeText={(t) => updateItem(it.uid, { reps: t }, false)} onBlur={() => commit(draft)} />
                 </View>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Label>Rest (s)</Label>
                   <Input value={String(it.restSec)} keyboardType="number-pad"
                     onChangeText={(t) => updateItem(it.uid, { restSec: Number(t.replace(/\D/g, '')) || 0 }, false)}
@@ -127,7 +127,7 @@ export default function SessionEditor() {
                       <Pressable key={id} onPress={() => { updateItem(it.uid, { exerciseId: id }); setSwapOpen(null); }}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, backgroundColor: C.card2 }}>
                         <ExerciseThumb exercise={a} size={40} />
-                        <Text style={{ color: C.text, flex: 1 }}>{a.name}</Text>
+                        <Text style={{ color: C.text, flex: 1, fontFamily: F.body }}>{a.name}</Text>
                       </Pressable>
                     );
                   })}
@@ -145,7 +145,7 @@ export default function SessionEditor() {
       <Modal visible={!!picker} animationType="slide" onRequestClose={() => setPicker(null)}>
         <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: 12 }}>
           <Row style={{ paddingHorizontal: 16, justifyContent: 'space-between', width: '100%', maxWidth: 760, alignSelf: 'center' }}>
-            <Text style={{ color: C.text, fontSize: 18, fontWeight: '700' }}>{picker?.mode === 'add' ? 'Add exercise' : 'Swap exercise'}</Text>
+            <Text style={{ color: C.text, fontSize: 20, fontFamily: F.display }}>{picker?.mode === 'add' ? 'Add exercise' : 'Swap exercise'}</Text>
             <Button small kind="secondary" title="Cancel" onPress={() => setPicker(null)} />
           </Row>
           <ExerciseList onPick={onPicked} />

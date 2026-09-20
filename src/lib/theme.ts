@@ -1,12 +1,44 @@
+// Monochrome design tokens.
 export const C = {
-  bg: '#0b1120',
-  card: '#151e32',
-  card2: '#1d2940',
-  border: '#27344f',
-  text: '#e8edf7',
-  muted: '#93a1bb',
-  accent: '#f97316',
-  accentText: '#0b1120',
-  good: '#22c55e',
-  danger: '#ef4444',
+  bg: '#000000',
+  card: '#0b0b0b',
+  card2: '#161616',
+  border: '#232323',
+  borderStrong: '#3a3a3a',
+  text: '#f5f5f5',
+  muted: '#8c8c8c',
+  faint: '#555555',
+  inverse: '#ffffff',
+  inverseText: '#000000',
+  // kept for older references
+  accent: '#ffffff',
+  accentText: '#000000',
+  good: '#f5f5f5',
+  danger: '#ff5a5a', // only for errors
+};
+
+export const F = {
+  display: 'SpaceGrotesk_700Bold',
+  displayMed: 'SpaceGrotesk_500Medium',
+  body: 'Inter_400Regular',
+  bodyMed: 'Inter_500Medium',
+  bodySemi: 'Inter_600SemiBold',
+};
+
+export const R = { sm: 4, md: 8, lg: 12 };
+
+/**
+ * A small set of muted accents for labels that need telling apart.
+ * Desaturated so they sit on black without fighting the monochrome look.
+ */
+export const A = {
+  protein: '#6ea8fe', // blue
+  carbs: '#e3b341',   // amber
+  fat: '#b78cf5',     // violet
+  fibre: '#5fc08b',   // green
+  water: '#4fb3c4',   // cyan
+  energy: '#f5f5f5',  // calories stay white
+  up: '#5fc08b',      // go heavier / on track
+  down: '#e3b341',    // ease off
+  over: '#e0796b',    // past the limit
 };

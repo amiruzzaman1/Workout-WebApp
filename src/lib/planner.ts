@@ -10,7 +10,7 @@ export type Profile = {
   id: string;
   display_name: string | null;
   experience: 'beginner' | 'intermediate';
-  goal: 'muscle' | 'fat_loss' | 'strength' | 'general';
+  goal: 'muscle' | 'fat_loss' | 'strength' | 'general' | 'recomp';
   training_days: number[];
   sessions_per_day: number;
   double_days: number[];
@@ -19,6 +19,18 @@ export type Profile = {
   injuries: string | null;
   gym_name: string | null;
   equipment: string[];
+  // body & nutrition (see nutrition.ts)
+  height_cm?: number | null;
+  weight_kg?: number | null;
+  sex?: 'male' | 'female' | null;
+  birth_year?: number | null;
+  birth_date?: string | null; // YYYY-MM-DD
+  job_activity?: 'desk' | 'light' | 'active' | 'heavy' | null;
+  work_hours_week?: number | null;
+  work_hours_by_day?: (number | null)[] | null;
+  target_weight_kg?: number | null;
+  calorie_override?: number | null;
+  water_goal_ml?: number | null;
 };
 
 export type SplitChoice = 'auto' | 'full_body' | 'upper_lower' | 'ppl' | 'body_part';
@@ -173,6 +185,7 @@ function prescription(p: Profile, slot: string): { sets: number; reps: string; r
     case 'fat_loss':
       return { sets: 3, reps: iso ? '12-15' : '10-15', restSec: 60 };
     case 'muscle':
+    case 'recomp':
       return iso ? { sets: 3, reps: '12-15', restSec: 60 } : { sets: beginner ? 3 : 4, reps: '8-12', restSec: 90 };
     default:
       return { sets: beginner ? 2 : 3, reps: iso ? '12-15' : '10-12', restSec: 75 };
@@ -196,7 +209,7 @@ function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude:
     title: t.title,
     type: 'strength',
     focus: t.groups,
-    warmup: '5 min easy cardio, then 1–2 light warm-up sets of the first exercise.',
+    warmup: '5 min easy cardio, then 1 or 2 light warm-up sets of the first exercise.',
     items,
   };
 }
@@ -208,7 +221,7 @@ function buildCardio(p: Profile, equipment: Set<string>, exclude: { slots: Set<s
   const c = pickFromSlot('cardio', equipment, used, exclude.ids);
   if (c) {
     used.add(c);
-    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: `${minutes} min`, restSec: 0, note: 'Steady pace — you can still talk in short sentences.' });
+    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: `${minutes} min`, restSec: 0, note: 'Steady pace: you can still talk in short sentences.' });
   }
   for (const slot of ['core', 'core2']) {
     const id = pickFromSlot(slot, equipment, used, exclude.ids);
@@ -288,7 +301,7 @@ export function generatePlan(p: Profile): PlanData {
   }
 
   if (p.experience === 'beginner') {
-    notes.push('Beginner plan: pick a weight you could lift 3–4 more times at the end of each set. Add a little weight once you hit the top of the rep range on every set.');
+    notes.push('Beginner plan: pick a weight you could lift 3 or 4 more times at the end of each set. Add a little weight once you hit the top of the rep range on every set.');
   }
   if (doubles.size > 0) {
     notes.push('Two-session days: leave at least 6 hours between sessions. The second session never repeats the muscles from the first.');
@@ -297,7 +310,7 @@ export function generatePlan(p: Profile): PlanData {
   if (result.some((d) => d.sessions.some((s) => s.type === 'cardio')) && doubles.size === 0) {
     notes.push('Some days are cardio & core because your muscles need 48 hours between hard sessions.');
   }
-  if (p.injuries) notes.push('You mentioned an injury — exercises that commonly aggravate it were left out. Stop anything that causes pain and check with a physio.');
+  if (p.injuries) notes.push('You mentioned an injury, so exercises that commonly aggravate it were left out. Stop anything that causes pain and check with a physio.');
 
   return { version: 1, generatedAt: new Date().toISOString(), split, notes, days: result };
 }

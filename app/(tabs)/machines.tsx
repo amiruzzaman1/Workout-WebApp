@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Switch, View } from 'react-native';
 import { ExerciseThumb } from '../../src/components/ExerciseAnimation';
-import { Button, H2, P, Screen } from '../../src/components/ui';
+import { Button, Eyebrow, H1, ListRow, P, Screen, Section } from '../../src/components/ui';
 import { EquipmentKind, JETTS_NEWTOWN_TEMPLATE, MACHINES } from '../../src/data/machines';
 import { confirm } from '../../src/lib/confirm';
 import { getExercise } from '../../src/lib/exercises';
@@ -24,44 +24,36 @@ export default function Machines() {
   }
 
   return (
-    <Screen>
-      <P muted>
-        Tick what {profile?.gym_name || 'your gym'} has — your plan only uses ticked equipment. Tap a machine for a how-to guide.
-        Rebuild your plan (My Plan tab) after changing this.
-      </P>
+    <Screen top>
+      <Eyebrow>{profile?.gym_name || 'My gym'}</Eyebrow>
+      <H1>Machines</H1>
+      <P muted>Switch on what your gym has, because plans only use equipment that's on. Tap any machine for a step by step guide.</P>
       {SECTIONS.map(([kind, title]) => (
-        <View key={kind} style={{ gap: 8 }}>
-          <H2>{title}</H2>
-          {MACHINES.filter((m) => m.kind === kind).map((m) => {
-            const demo = m.exercises.map(getExercise).find(Boolean);
-            const hasGuide = m.setup.length > 0 || m.howTo.length > 0;
-            return (
-              <Pressable
-                key={m.key}
-                onPress={() => hasGuide && router.push(`/machine/${m.key}`)}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 12,
-                  backgroundColor: pressed && hasGuide ? C.card2 : C.card, borderWidth: 1, borderColor: C.border,
-                })}
-              >
-                {demo ? <ExerciseThumb exercise={demo} /> : <View style={{ width: 56, height: 56, borderRadius: 8, backgroundColor: C.card2 }} />}
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.text, fontWeight: '700', fontSize: 15 }}>{m.name}{hasGuide ? ' ›' : ''}</Text>
-                  <Text style={{ color: C.muted, fontSize: 13 }} numberOfLines={2}>{m.summary}</Text>
-                </View>
-                <Switch
-                  value={equipment.has(m.key)}
-                  onValueChange={() => toggleEquipment(m.key)}
-                  trackColor={{ true: C.accent, false: C.border }}
-                  thumbColor="#fff" {...({ activeThumbColor: "#fff" } as any)}
+        <Section key={kind} title={title}>
+          <View>
+            {MACHINES.filter((m) => m.kind === kind).map((m) => {
+              const demo = m.exercises.map(getExercise).find(Boolean);
+              const hasGuide = m.setup.length > 0 || m.howTo.length > 0;
+              const on = equipment.has(m.key);
+              return (
+                <ListRow
+                  key={m.key}
+                  onPress={hasGuide ? () => router.push(`/machine/${m.key}`) : undefined}
+                  left={demo ? <ExerciseThumb exercise={demo} /> : <View style={{ width: 52, height: 52, borderRadius: 4, backgroundColor: C.card2 }} />}
+                  title={m.name}
+                  subtitle={m.summary}
+                  right={
+                    <Switch value={on} onValueChange={() => toggleEquipment(m.key)} trackColor={{ true: C.inverse, false: C.border }}
+                      thumbColor={on ? C.inverseText : C.muted} {...({ activeThumbColor: C.inverseText } as any)} />
+                  }
                 />
-              </Pressable>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        </Section>
       ))}
-      <Button kind="secondary" title="Reset to Jetts Newtown list" onPress={resetJetts} />
-      <P muted style={{ fontSize: 13 }}>The Jetts Newtown list is a best guess until we confirm it with photos of the gym floor.</P>
+      <Button kind="secondary" title="Reset to Jetts Newtown list" onPress={resetJetts} style={{ marginTop: 24 }} />
+      <P muted style={{ fontSize: 13 }}>The Jetts Newtown list is a best guess until it's confirmed with photos of the gym floor. After changing equipment, rebuild your plan from the Today tab.</P>
     </Screen>
   );
 }

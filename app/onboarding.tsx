@@ -1,14 +1,17 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Text } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
 import { Button, Card, Chip, H1, Input, Label, P, Row, Screen } from '../src/components/ui';
+import { DobInput, NumberField, WorkFields } from '../src/components/BodyFields';
 import { confirm } from '../src/lib/confirm';
 import { DAY_SHORT, Profile, SPLIT_LABELS, SplitChoice, WEEK_ORDER } from '../src/lib/planner';
+import { ageFrom, cmToFtIn, ftInToCm } from '../src/lib/nutrition';
 import { DEFAULT_PROFILE, useStore } from '../src/lib/store';
 import { C } from '../src/lib/theme';
 
 const GOALS: [Profile['goal'], string][] = [
   ['general', 'General fitness'],
+  ['recomp', 'Lose fat and build muscle'],
   ['muscle', 'Build muscle'],
   ['fat_loss', 'Lose fat'],
   ['strength', 'Get stronger'],
@@ -21,8 +24,25 @@ export default function Onboarding() {
   const start = { ...DEFAULT_PROFILE, ...(profile ?? {}) };
   const [f, setF] = useState(start);
   const [busy, setBusy] = useState(false);
+  const [dob, setDob] = useState<string | null>(() => {
+    const p: any = profile;
+    if (p?.birth_date) return p.birth_date;
+    const a = ageFrom(p?.birth_year);
+    return a ? `${new Date().getFullYear() - a}-07-01` : null;
+  });
+  const [hUnit, setHUnit] = useState<'cm' | 'ft'>('cm');
   const [err, setErr] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
+
+  const [synced, setSynced] = useState(!!profile);
+  useEffect(() => {
+    if (synced || !profile) return;
+    setF({ ...DEFAULT_PROFILE, ...profile });
+    const p: any = profile;
+    const a = ageFrom(p.birth_year);
+    setDob(p.birth_date ?? (a ? `${new Date().getFullYear() - a}-07-01` : null));
+    setSynced(true);
+  }, [profile, synced]);
 
   const toggleDay = (d: number) => {
     const has = f.training_days.includes(d);
@@ -40,7 +60,7 @@ export default function Onboarding() {
     try {
       const planFields: (keyof Profile)[] = ['experience', 'goal', 'training_days', 'sessions_per_day', 'double_days', 'session_minutes', 'split', 'injuries'];
       const changed = !profile || planFields.some((k) => JSON.stringify((profile as any)[k]) !== JSON.stringify((f as any)[k]));
-      const saved = await saveProfile(f);
+      const saved = await saveProfile({ ...f, birth_date: dob, birth_year: dob ? Number(dob.slice(0, 4)) : null });
       if (!plan) await regeneratePlan(saved);
       else if (changed && (await confirm('Rebuild your plan?', 'Your settings changed. Rebuild the weekly plan to match? Any manual edits to the plan will be replaced.')))
         await regeneratePlan(saved);
@@ -115,6 +135,61 @@ export default function Onboarding() {
         <P muted style={{ fontSize: 13 }}>
           "One body part a day" = Chest, Back, Legs, Shoulders, Arms days. "Pick for me" chooses based on how many days you train.
         </P>
+      </Card>
+
+      <Card>
+        <Label>Your body (for calories and macros)</Label>
+        <P muted style={{ fontSize: 13 }}>Used for BMI and your daily food targets. You can skip this and add it later.</P>
+        <Row style={{ justifyContent: 'space-between', marginTop: 8 }}>
+          <Label>Height</Label>
+          <Row>
+            <Chip label="cm" active={hUnit === 'cm'} onPress={() => setHUnit('cm')} />
+            <Chip label="ft / in" active={hUnit === 'ft'} onPress={() => setHUnit('ft')} />
+          </Row>
+        </Row>
+        {hUnit === 'cm' ? (
+          <NumberField value={Number(f.height_cm) || null} onChange={(v) => set('height_cm', v as any)} step={1} min={100} max={250} placeholder="178" suffix="cm" />
+        ) : (
+          <Row style={{ gap: 10 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <NumberField value={cmToFtIn(Number(f.height_cm) || 175).ft} decimals={0} step={1} min={4} max={7} suffix="ft"
+                onChange={(v) => set('height_cm', ftInToCm(Math.min(7, Math.max(4, v ?? 5)), cmToFtIn(Number(f.height_cm) || 175).inch) as any)} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <NumberField value={cmToFtIn(Number(f.height_cm) || 175).inch} decimals={0} step={1} min={0} max={11} suffix="in"
+                onChange={(v) => set('height_cm', ftInToCm(cmToFtIn(Number(f.height_cm) || 175).ft, Math.min(11, Math.max(0, v ?? 0))) as any)} />
+            </View>
+          </Row>
+        )}
+
+        <Row style={{ gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Label>Weight now</Label>
+            <NumberField value={Number(f.weight_kg) || null} onChange={(v) => set('weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="82" suffix="kg" />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Label>Goal weight</Label>
+            <NumberField value={Number(f.target_weight_kg) || null} onChange={(v) => set('target_weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="optional" suffix="kg" />
+          </View>
+        </Row>
+
+        <Label>Date of birth</Label>
+        <DobInput value={dob} onChange={setDob} />
+
+        <Label>Sex</Label>
+        <Row wrap>
+          <Chip label="Male" active={f.sex === 'male'} onPress={() => set('sex', 'male' as any)} />
+          <Chip label="Female" active={f.sex === 'female'} onPress={() => set('sex', 'female' as any)} />
+        </Row>
+
+        <WorkFields
+          job={(f as any).job_activity ?? null}
+          hoursWeek={(f as any).work_hours_week == null ? null : Number((f as any).work_hours_week)}
+          byDay={(f as any).work_hours_by_day ?? null}
+          onJob={(k) => set('job_activity', k as any)}
+          onHoursWeek={(v) => set('work_hours_week', v as any)}
+          onByDay={(v) => set('work_hours_by_day', v as any)}
+        />
       </Card>
 
       <Card>

@@ -28,7 +28,8 @@
       "backgroundColor": "#0f172a"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font"
     ],
     "scheme": "workout"
   }
