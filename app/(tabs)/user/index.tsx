@@ -233,6 +233,11 @@ export default function UserScreen() {
             sub={profile.gym_name || 'Choose your equipment'}
             onPress={() => router.push('/library/machines')}
           />
+          <Setting
+            icon="key-outline" color={A.water} title="Change password"
+            sub="Sign in with a new password"
+            onPress={() => router.push('/user/password')}
+          />
         </View>
       </Section>
     </Screen>

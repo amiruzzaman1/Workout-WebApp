@@ -2,7 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Logo } from '../src/components/Logo';
+import { PasswordHelp } from '../src/components/PasswordHelp';
 import { Button, hovered, Input, Label, Screen, smooth } from '../src/components/ui';
+import { checkPassword } from '../src/lib/password';
 import { supabase } from '../src/lib/supabase';
 import { APP_NAME, C, F, R } from '../src/lib/theme';
 
@@ -18,6 +20,8 @@ export default function Login() {
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
 
   const switchTo = (m: Mode) => { setMode(m); setMsg(null); };
+  // Only a new password has to be strong. Signing in accepts whatever you set before.
+  const check = checkPassword(password, email);
 
   // Google sends you to its own page, then back to this site signed in. Web only for now.
   async function google() {
@@ -32,7 +36,8 @@ export default function Login() {
   async function submit() {
     setMsg(null);
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setMsg({ text: 'Enter a valid email address.', error: true });
-    if (password.length < 6) return setMsg({ text: 'Your password needs at least 6 characters.', error: true });
+    if (mode === 'signin' && !password) return setMsg({ text: 'Enter your password.', error: true });
+    if (mode === 'signup' && !check.valid) return setMsg({ text: 'Your password is not strong enough yet. Every item in the list needs a tick.', error: true });
     if (mode === 'signup' && password !== again) return setMsg({ text: 'The two passwords do not match.', error: true });
     setBusy(true);
     try {
@@ -90,7 +95,8 @@ export default function Login() {
           <Label>Password</Label>
           <Pressable onPress={() => setShow(!show)} hitSlop={8} accessibilityRole="button" accessibilityLabel={show ? 'Hide password' : 'Show password'}><Text style={s.link}>{show ? 'Hide' : 'Show'}</Text></Pressable>
         </View>
-        <Input value={password} onChangeText={setPassword} secureTextEntry={!show} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder="At least 6 characters" onSubmitEditing={mode === 'signin' ? submit : undefined} />
+        <Input value={password} onChangeText={(t) => { setPassword(t); if (msg?.error) setMsg(null); }} secureTextEntry={!show} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} placeholder={mode === 'signin' ? 'Your password' : 'At least 8, mixed characters'} onSubmitEditing={mode === 'signin' ? submit : undefined} />
+        {mode === 'signup' && <PasswordHelp check={check} />}
 
         {mode === 'signup' && (
           <>
