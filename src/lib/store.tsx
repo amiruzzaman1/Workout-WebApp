@@ -32,6 +32,12 @@ type Store = {
   updateFoodEntry: (id: string, ch: Partial<FoodEntry>) => Promise<void>;
   deleteFoodEntry: (id: string) => Promise<void>;
   saveFood: (f: Food) => Promise<void>;
+  /** The day picked in the header. Food, workouts, sleep, weight and time are saved to this day. */
+  date: string;
+  setDate: (d: string) => void;
+  sharedFoods: Food[];
+  addSharedFood: (f: Food) => Promise<Food>;
+  updateSharedFood: (id: string, f: Food) => Promise<Food>;
   setWater: (day: string, ml: number) => Promise<void>;
   sleep: SleepLog[];
   activities: ActivityLog[];
@@ -39,6 +45,7 @@ type Store = {
   addActivity: (row: Omit<ActivityLog, 'id'>) => Promise<ActivityLog>;
   updateActivity: (id: string, ch: Partial<ActivityLog>) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
+  refreshActivities: () => Promise<void>;
   weights: WeightLog[];
   logWeight: (row: WeightLog) => Promise<void>;
   deleteWeight: (day: string) => Promise<void>;
@@ -76,6 +83,7 @@ export const DEFAULT_PROFILE: Omit<Profile, 'id'> = {
   target_weight_kg: null,
   calorie_override: null,
   water_goal_ml: null,
+  time_categories: null,
 };
 
 function toExercise(r: any): Exercise {
@@ -95,6 +103,40 @@ function toExercise(r: any): Exercise {
   };
 }
 
+const FOOD_NUMBERS = ['kcal_100', 'protein_100', 'carbs_100', 'sugars_100', 'fat_100', 'sat_fat_100', 'fibre_100', 'sodium_100', 'serving_g'];
+
+/** A row of the shared foods table as a Food, marked with who added or last edited it. */
+function sharedFromRow(r: any, uid: string): Food {
+  const o: any = { ...r };
+  for (const k of FOOD_NUMBERS) if (o[k] != null) o[k] = Number(o[k]);
+  const last = r.updated_by ?? r.created_by;
+  const food: Food = {
+    id: o.id, name: o.name, brand: o.brand, barcode: o.barcode,
+    kcal_100: o.kcal_100, protein_100: o.protein_100, carbs_100: o.carbs_100, sugars_100: o.sugars_100,
+    fat_100: o.fat_100, sat_fat_100: o.sat_fat_100, fibre_100: o.fibre_100, sodium_100: o.sodium_100,
+    serving_g: o.serving_g, serving_label: o.serving_label, unit: o.unit, source: 'User added',
+    shared: { action: r.updated_by ? 'edited' : 'added', by: last === uid ? 'you' : 'other', updated_at: r.updated_at },
+  };
+  return food;
+}
+
+/** Only the food fields go to the database. Who added or edited it is filled in there. */
+function sharedRow(f: Food) {
+  return {
+    name: f.name, brand: f.brand ?? null, barcode: f.barcode ?? null,
+    kcal_100: f.kcal_100, protein_100: f.protein_100, carbs_100: f.carbs_100, sugars_100: f.sugars_100 ?? null,
+    fat_100: f.fat_100, sat_fat_100: f.sat_fat_100 ?? null, fibre_100: f.fibre_100 ?? null, sodium_100: f.sodium_100 ?? null,
+    serving_g: f.serving_g ?? null, serving_label: f.serving_label ?? null, unit: f.unit ?? 'g',
+  };
+}
+
+/** The fields of `next` that differ from `base`, so a save sends only what was edited. */
+export function onlyChanged<T extends Record<string, any>>(base: Record<string, any> | null | undefined, next: T): Partial<T> {
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(next)) if (JSON.stringify(base?.[k] ?? null) !== JSON.stringify(next[k] ?? null)) out[k] = next[k];
+  return out as Partial<T>;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -105,6 +147,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [visits, setVisits] = useState<GymVisit[]>([]);
   const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([]);
   const [myFoods, setMyFoods] = useState<Food[]>([]);
+  const [sharedFoods, setSharedFoods] = useState<Food[]>([]);
+  const [date, setDate] = useState(() => {
+    const n = new Date();
+    const z = (v: number) => String(v).padStart(2, '0');
+    return `${n.getFullYear()}-${z(n.getMonth() + 1)}-${z(n.getDate())}`;
+  });
   const [water, setWaterState] = useState<Record<string, number>>({});
   const [sleep, setSleep] = useState<SleepLog[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
@@ -120,6 +168,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setVisits([]);
       setFoodEntries([]);
       setMyFoods([]);
+      setSharedFoods([]);
       setWaterState({});
       setSleep([]);
       setActivities([]);
@@ -127,7 +176,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt] = await Promise.all([
+    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt, sf] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', s.user.id).maybeSingle(),
       supabase.from('plans').select('id,name,data').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('custom_exercises').select('*').order('created_at'),
@@ -139,9 +188,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       supabase.from('foods').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('water_logs').select('day,ml').gte('day', since).limit(500),
       supabase.from('sleep_logs').select('night_of,bed_time,wake_time,minutes,note').gte('night_of', since).order('night_of', { ascending: false }).limit(400),
-      supabase.from('activity_logs').select('id,day,title,description,category,started_at,ended_at,minutes').gte('day', since).order('created_at', { ascending: true }).limit(2000),
+      supabase.from('activity_logs').select('id,day,title,description,category,started_at,ended_at,minutes,segments').gte('day', since).order('created_at', { ascending: true }).limit(2000),
       supabase.from('weight_logs').select('day,kg,waist_cm').order('day', { ascending: true }).limit(2000),
+      supabase.from('shared_foods').select('*').order('updated_at', { ascending: false }).limit(3000),
     ]);
+    setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
     setActivities((al.data ?? []) as ActivityLog[]);
@@ -202,20 +253,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, [loadUserData]);
 
+  // Only the fields you changed are sent. Sending a whole stale copy of the profile from an old screen
+  // used to wipe out things saved somewhere else in the meantime, like your body stats.
   const saveProfile = useCallback(
     async (changes: Partial<Profile>) => {
       if (!session) throw new Error('Not signed in');
-      const next = { ...DEFAULT_PROFILE, ...(profile ?? {}), ...changes, id: session.user.id } as Profile;
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert({ ...next, updated_at: new Date().toISOString() })
-        .select()
-        .single();
+      if (!ready) throw new Error('Still loading your profile. Try again in a moment.');
+      const { id: _ignored, ...fields } = changes as any;
+      const stamp = { updated_at: new Date().toISOString() };
+      const query = profile
+        ? supabase.from('profiles').update({ ...fields, ...stamp }).eq('id', session.user.id)
+        : supabase.from('profiles').upsert({ ...DEFAULT_PROFILE, ...fields, id: session.user.id, ...stamp });
+      const { data, error } = await query.select().single();
       if (error) throw new Error(error.message);
       setProfile(data as Profile);
       return data as Profile;
     },
-    [session, profile],
+    [session, profile, ready],
   );
 
   const savePlan = useCallback(
@@ -338,6 +392,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const row: any = { ...f };
     delete row.id;
     delete row._nz;
+    delete row.shared;
     const { data, error } = await supabase
       .from('foods')
       .upsert(row, f.barcode ? { onConflict: 'user_id,barcode' } : undefined)
@@ -346,6 +401,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) { console.warn(error.message); return; }
     setMyFoods((l) => [data as Food, ...l.filter((x) => x.id !== (data as Food).id && (!f.barcode || x.barcode !== f.barcode))]);
   }, []);
+
+  // Foods anyone added. The database records who added and who last edited each one.
+  const addSharedFood = useCallback(async (f: Food) => {
+    if (!session) throw new Error('Not signed in');
+    const { data, error } = await supabase.from('shared_foods').insert(sharedRow(f)).select().single();
+    if (error) throw new Error(error.message);
+    const food = sharedFromRow(data, session.user.id);
+    setSharedFoods((l) => [food, ...l]);
+    return food;
+  }, [session]);
+
+  const updateSharedFood = useCallback(async (id: string, f: Food) => {
+    if (!session) throw new Error('Not signed in');
+    const { data, error } = await supabase.from('shared_foods').update(sharedRow(f)).eq('id', id).select().single();
+    if (error) throw new Error(error.message);
+    const food = sharedFromRow(data, session.user.id);
+    setSharedFoods((l) => [food, ...l.filter((x) => x.id !== id)]);
+    return food;
+  }, [session]);
 
   const setWater = useCallback(async (day: string, ml: number) => {
     const v = Math.max(0, Math.round(ml));
@@ -379,6 +453,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  // A timer started on another device shows up here when the app comes back to the front.
+  const refreshActivities = useCallback(async () => {
+    const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+    const { data, error } = await supabase.from('activity_logs').select('id,day,title,description,category,started_at,ended_at,minutes,segments')
+      .gte('day', since).order('created_at', { ascending: true }).limit(2000);
+    if (!error && data) setActivities(data as ActivityLog[]);
+  }, []);
+
   const logWeight = useCallback(async (row: WeightLog) => {
     const next = [...weights.filter((w) => w.day !== row.day), row].sort((a, b) => (a.day < b.day ? -1 : 1));
     setWeights(next);
@@ -403,8 +485,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
-    foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, setWater,
-    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, weights, logWeight, deleteWeight,
+    foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

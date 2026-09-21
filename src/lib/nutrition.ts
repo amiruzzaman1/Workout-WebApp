@@ -245,6 +245,13 @@ export function ftInToCm(ft: number, inch: number) {
 }
 
 // ---------- food data ----------
+/** Set on foods that users added to the shared list. */
+export type SharedMeta = {
+  action: 'added' | 'edited';
+  by: 'you' | 'other'; // who added it, or who edited it last
+  updated_at: string;
+};
+
 export type Food = {
   id?: string;
   name: string;
@@ -262,6 +269,7 @@ export type Food = {
   serving_label?: string | null;
   unit?: string; // g or ml
   source?: string | null;
+  shared?: SharedMeta;
 };
 
 export type FoodEntry = {

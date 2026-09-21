@@ -58,33 +58,64 @@ export async function lookupBarcode(barcode: string): Promise<Food | null> {
   return f;
 }
 
-/** Text search. Tries the newer search service first, then the classic endpoint. */
+// Lower case, no apostrophes or hyphens, so "Pam's" matches "pams" and "Weet-Bix" matches "weetbix".
+const norm = (s: string) => s.toLowerCase().replace(/['\u2019`]/g, '').replace(/-/g, '').replace(/[^a-z0-9\s]/g, ' ');
+
+/** Every word you typed must appear in the name or brand. A half typed word still matches. */
+function matchesAll(f: Food, words: string[]) {
+  const hay = norm(`${f.name} ${f.brand ?? ''}`);
+  return words.every((w) => hay.includes(w));
+}
+
+const withNZ = (p: any, f: Food) => ({ ...f, _nz: !!p.countries_tags?.includes('en:new-zealand') } as Food);
+
+/** The classic search needs every word to match, which is what a shopping search should do. */
+async function classicSearch(q: string, nzOnly: boolean): Promise<Food[]> {
+  let url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=25&fields=${FIELDS}`;
+  if (nzOnly) url += '&tagtype_0=countries&tag_contains_0=contains&tag_0=new-zealand';
+  const j = await getJSON(url);
+  const out: Food[] = [];
+  for (const p of j?.products ?? []) {
+    const f = fromOFF(p);
+    if (f) out.push(withNZ(p, f));
+  }
+  return out;
+}
+
+/** The newer search service is quick but matches any one word, so it is only a fallback. */
+async function modernSearch(q: string): Promise<Food[]> {
+  const j = await getJSON(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=25&fields=${FIELDS}`);
+  const out: Food[] = [];
+  for (const h of j?.hits ?? []) {
+    const f = fromOFF(h);
+    if (f) out.push(withNZ(h, f));
+  }
+  return out;
+}
+
+/** Text search. Products sold in New Zealand first, then the rest of the world. */
 export async function searchFoods(term: string, nzFirst = true): Promise<Food[]> {
   const q = term.trim();
   if (q.length < 2) return [];
-  const out: Food[] = [];
-  try {
-    const j = await getJSON(
-      `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=25&fields=${FIELDS}`,
-    );
-    for (const h of j?.hits ?? []) {
-      const f = fromOFF(h);
-      if (f) out.push({ ...f, ...(h.countries_tags ? { _nz: h.countries_tags.includes('en:new-zealand') } as any : {}) });
-    }
-  } catch {
-    // ignore and fall back
+  const words = norm(q).split(/\s+/).filter(Boolean);
+  const keep = (list: Food[]) => list.filter((f) => f.kcal_100 > 0 && matchesAll(f, words));
+  const same = (a: Food, b: Food) => (a.barcode && a.barcode === b.barcode) || (a.name === b.name && a.brand === b.brand);
+
+  let out: Food[] = [];
+  let lastErr: unknown = null;
+  let answered = 0; // sources that replied, even with nothing useful
+  try { out = keep(await classicSearch(q, true)); answered++; } catch (e) { lastErr = e; }
+  if (out.length < 5) {
+    try {
+      for (const f of keep(await classicSearch(q, false))) if (!out.some((o) => same(o, f))) out.push(f);
+      answered++;
+    } catch (e) { lastErr = e; }
   }
-  if (out.length === 0) {
-    const j = await getJSON(
-      `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=25&fields=${FIELDS}`,
-    );
-    for (const p of j?.products ?? []) {
-      const f = fromOFF(p);
-      if (f) out.push({ ...f, ...(p.countries_tags ? { _nz: p.countries_tags.includes('en:new-zealand') } as any : {}) });
-    }
+  // The quick service is only a backup for when the classic one is down.
+  if (answered === 0) {
+    try { out = keep(await modernSearch(q)); answered++; } catch (e) { lastErr = e; }
   }
-  const usable = out.filter((f) => f.kcal_100 > 0);
-  if (!nzFirst) return usable;
-  // Products sold in New Zealand first, with the rest underneath.
-  return [...usable.filter((f: any) => f._nz), ...usable.filter((f: any) => !f._nz)];
+  if (answered === 0 && lastErr) throw lastErr;
+  if (!nzFirst) return out;
+  return [...out.filter((f: any) => f._nz), ...out.filter((f: any) => !f._nz)];
 }

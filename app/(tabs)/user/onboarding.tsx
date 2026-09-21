@@ -1,12 +1,12 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, Card, Chip, H1, Input, Label, P, Row, Screen } from '../../../src/components/ui';
 import { DobInput, NumberField, WorkFields } from '../../../src/components/BodyFields';
 import { confirm } from '../../../src/lib/confirm';
 import { DAY_SHORT, Profile, SPLIT_LABELS, SplitChoice, WEEK_ORDER } from '../../../src/lib/planner';
 import { ageFrom, cmToFtIn, ftInToCm } from '../../../src/lib/nutrition';
-import { DEFAULT_PROFILE, useStore } from '../../../src/lib/store';
+import { DEFAULT_PROFILE, onlyChanged, useStore } from '../../../src/lib/store';
 import { C } from '../../../src/lib/theme';
 
 const GOALS: [Profile['goal'], string][] = [
@@ -21,8 +21,11 @@ const MINUTES = [30, 45, 60, 75, 90];
 export default function Onboarding() {
   const { profile, plan, saveProfile, regeneratePlan } = useStore();
   const router = useRouter();
+  const { new: isNew } = useLocalSearchParams<{ new?: string }>();
   const start = { ...DEFAULT_PROFILE, ...(profile ?? {}) };
   const [f, setF] = useState(start);
+  // What the form started from, so a save only sends the fields you changed.
+  const base = useRef<any>(start);
   const [busy, setBusy] = useState(false);
   const [dob, setDob] = useState<string | null>(() => {
     const p: any = profile;
@@ -38,6 +41,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (synced || !profile) return;
     setF({ ...DEFAULT_PROFILE, ...profile });
+    base.current = { ...DEFAULT_PROFILE, ...profile };
     const p: any = profile;
     const a = ageFrom(p.birth_year);
     setDob(p.birth_date ?? (a ? `${new Date().getFullYear() - a}-07-01` : null));
@@ -60,9 +64,11 @@ export default function Onboarding() {
     try {
       const planFields: (keyof Profile)[] = ['experience', 'goal', 'training_days', 'sessions_per_day', 'double_days', 'session_minutes', 'split', 'injuries'];
       const changed = !profile || planFields.some((k) => JSON.stringify((profile as any)[k]) !== JSON.stringify((f as any)[k]));
-      const saved = await saveProfile({ ...f, birth_date: dob, birth_year: dob ? Number(dob.slice(0, 4)) : null });
+      const now = { ...f, birth_date: dob, birth_year: dob ? Number(dob.slice(0, 4)) : null };
+      const saved = await saveProfile(onlyChanged(base.current, now));
+      base.current = now;
       if (!plan) await regeneratePlan(saved);
-      else if (changed && (await confirm('Rebuild your plan?', 'Your settings changed. Rebuild the weekly plan to match? Any manual edits to the plan will be replaced.')))
+      else if (changed && (await confirm('Rebuild your plan?', 'Your settings changed. Rebuild the weekly plan to match? Any manual edits to the plan will be replaced.', { confirmText: 'Rebuild' })))
         await regeneratePlan(saved);
       router.replace('/');
     } catch (e: any) {
@@ -74,10 +80,15 @@ export default function Onboarding() {
 
   return (
     <Screen>
-      {!profile && (
+      {(!profile || !!isNew) ? (
         <>
-          <H1>Let's set you up</H1>
+          <H1>Now your training</H1>
           <P muted>This builds your first weekly plan. You can change everything later.</P>
+        </>
+      ) : (
+        <>
+          <H1>Profile and schedule</H1>
+          <P muted>Change your details, training days and goal here. If your plan settings change, you can rebuild the plan to match.</P>
         </>
       )}
       <Card>
@@ -201,7 +212,7 @@ export default function Onboarding() {
       </Card>
 
       {err && <Text style={{ color: C.danger }}>{err}</Text>}
-      <Button title={profile ? 'Save' : 'Build my plan'} onPress={save} loading={busy} />
+      <Button icon={profile ? 'checkmark' : 'sparkles'} title={profile ? 'Save' : 'Build my plan'} onPress={save} loading={busy} />
     </Screen>
   );
 }

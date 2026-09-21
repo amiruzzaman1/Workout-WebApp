@@ -1,11 +1,13 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from '../../src/components/BarChart';
-import { CAT_COLORS } from '../../src/components/DayTrackers';
+import { catColor } from '../../src/components/DayTrackers';
 import { ExerciseThumb } from '../../src/components/ExerciseAnimation';
 import { LineChart } from '../../src/components/LineChart';
-import { Button, Card, Chip, Eyebrow, H1, H2, Input, Label, ListRow, P, Row, Screen, Section, Stat } from '../../src/components/ui';
+import { dayLabel } from '../../src/components/AppHeader';
+import { Button, Card, Chip, Eyebrow, H1, H2, hovered, HoverTip, Input, Label, ListRow, P, Row, Screen, Section, smooth, Stat } from '../../src/components/ui';
 import { getExercise } from '../../src/lib/exercises';
 import { computeTargets, MEAL_LABELS, MEALS, round, totals } from '../../src/lib/nutrition';
 import { metricFor } from '../../src/lib/planner';
@@ -37,24 +39,25 @@ function nice(isoDay: string, withDay = false) {
 const dayNum = (isoDay: string) => Math.round(new Date(isoDay + 'T00:00:00').getTime() / 864e5);
 
 type Tab = 'weight' | 'food' | 'training' | 'sleep';
-const TABS: { key: Tab; label: string; color: string }[] = [
-  { key: 'weight', label: 'Weight', color: A.protein },
-  { key: 'food', label: 'Food', color: A.carbs },
-  { key: 'training', label: 'Training', color: A.up },
-  { key: 'sleep', label: 'Sleep', color: A.fat },
+const TABS: { key: Tab; label: string; color: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { key: 'weight', label: 'Weight', color: A.protein, icon: 'scale-outline' },
+  { key: 'food', label: 'Food', color: A.carbs, icon: 'restaurant-outline' },
+  { key: 'training', label: 'Training', color: A.up, icon: 'barbell-outline' },
+  { key: 'sleep', label: 'Sleep', color: A.fat, icon: 'moon-outline' },
 ];
 
 export default function ProgressScreen() {
   const [tab, setTab] = useState<Tab>('weight');
   return (
-    <Screen top>
+    <Screen>
       <Eyebrow>Progress</Eyebrow>
       <H1>Your progress</H1>
       <View style={st.seg}>
         {TABS.map((t) => {
           const on = t.key === tab;
           return (
-            <Pressable key={t.key} onPress={() => setTab(t.key)} style={[st.segBtn, on && { backgroundColor: t.color + '26', borderColor: t.color }]}>
+            <Pressable key={t.key} onPress={() => setTab(t.key)} accessibilityRole="tab" accessibilityState={{ selected: on }} style={(p) => [st.segBtn, smooth, hovered(p) && !on && { backgroundColor: C.card2, borderColor: t.color + '88' }, on && { backgroundColor: t.color + '26', borderColor: t.color }]}>
+              <Ionicons name={t.icon} size={16} color={on ? t.color : C.muted} />
               <Text style={[st.segText, on && { color: t.color }]}>{t.label}</Text>
             </Pressable>
           );
@@ -79,9 +82,8 @@ const RANGES = [
 ];
 
 function WeightTab() {
-  const { weights, profile, logWeight, deleteWeight } = useStore();
+  const { weights, profile, logWeight, deleteWeight, date: day } = useStore();
   const [range, setRange] = useState('3M');
-  const [day, setDay] = useState(todayISO());
   const last = [...weights].reverse().find((w) => w.kg != null);
   const [kg, setKg] = useState('');
   const [waist, setWaist] = useState('');
@@ -106,7 +108,8 @@ function WeightTab() {
   const points = shown.map((w, i) => {
     const prev = i > 0 ? shown[i - 1].kg : null;
     const diff = prev != null ? round(w.kg - prev, 1) : null;
-    return { x: dayNum(w.day), y: w.kg, caption: `${nice(w.day, true)}: ${w.kg} kg${diff ? `  (${diff > 0 ? '+' : ''}${diff})` : ''}` };
+    const toGoal = goal != null && start != null && start !== goal ? Math.max(0, Math.min(1, (start - w.kg) / (start - goal))) : null;
+    return { x: dayNum(w.day), y: w.kg, caption: `${nice(w.day, true)}: ${w.kg} kg${diff ? `  (${diff > 0 ? '+' : ''}${diff})` : ''}`, note: toGoal != null ? `${Math.round(toGoal * 100)}% of the way to your goal` : undefined };
   });
   const waists = weights.filter((w) => w.waist_cm != null && w.day >= cutoff).map((w) => ({ x: dayNum(w.day), y: w.waist_cm!, caption: `${nice(w.day, true)}: ${w.waist_cm} cm waist` }));
 
@@ -152,7 +155,9 @@ function WeightTab() {
             <Text style={[st.small, { color: A.up }]}>{Math.round(pct * 100)}% there</Text>
             <Text style={st.small}>Goal {goal} kg</Text>
           </Row>
-          <View style={st.track}><View style={[st.fill, { width: `${Math.max(2, pct * 100)}%`, backgroundColor: A.up }]} /></View>
+          <HoverTip lines={[`${Math.round(pct * 100)}% of the way to ${goal} kg`, `Started at ${start} kg, now ${current} kg`]}>
+            <View style={st.track}><View style={[st.fill, { width: `${Math.max(2, pct * 100)}%`, backgroundColor: A.up }]} /></View>
+          </HoverTip>
           {pace != null && (
             <Text style={st.small}>
               Last 4 weeks: {pace > 0 ? '+' : ''}{pace} kg a week.{' '}
@@ -162,8 +167,8 @@ function WeightTab() {
         </Card>
       )}
 
-      <Section title="Weight trend" right={<Row style={{ gap: 4 }}>{RANGES.map((r) => (
-        <Pressable key={r.key} onPress={() => setRange(r.key)} style={[st.rangeBtn, range === r.key && { backgroundColor: C.card2 }]}>
+      <Section title="Weight trend" icon="trending-up" color={A.protein} right={<Row style={{ gap: 4 }}>{RANGES.map((r) => (
+        <Pressable key={r.key} onPress={() => setRange(r.key)} accessibilityRole="button" accessibilityState={{ selected: range === r.key }} style={(p) => [st.rangeBtn, smooth, (range === r.key || hovered(p)) && { backgroundColor: C.card2 }]}>
           <Text style={[st.rangeText, range === r.key && { color: C.text }]}>{r.key}</Text>
         </Pressable>
       ))}</Row>}>
@@ -178,14 +183,9 @@ function WeightTab() {
         />
       </Section>
 
-      <Section title="Log a weigh in">
+      <Section title="Log a weigh in" icon="scale" color={A.protein}>
         <Card style={{ gap: 4 }}>
-          <Row wrap style={{ gap: 6 }}>
-            {[0, 1, 2].map((n) => {
-              const d = shift(todayISO(), -n);
-              return <Chip key={n} label={n === 0 ? 'Today' : n === 1 ? 'Yesterday' : nice(d, true)} active={day === d} dot={A.protein} onPress={() => setDay(d)} />;
-            })}
-          </Row>
+          <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 13 }}>Saving for {dayLabel(day)}. Change the day with the button at the top right.</Text>
           <Row style={{ gap: 10, alignItems: 'flex-end' }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Label>Weight (kg)</Label>
@@ -197,19 +197,19 @@ function WeightTab() {
             </View>
           </Row>
           {!!err && <Text style={{ color: A.over, fontFamily: F.body, fontSize: 13, marginTop: 6 }}>{err}</Text>}
-          <Button small title="Save" loading={busy} onPress={save} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
+          <Button small icon="checkmark" title="Save" loading={busy} onPress={save} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
           <Text style={[st.small, { marginTop: 8 }]}>Weigh yourself first thing in the morning, after the toilet and before food. Your daily targets update to your latest weight.</Text>
         </Card>
       </Section>
 
       {waists.length > 0 && (
-        <Section title="Waist">
+        <Section title="Waist" icon="resize" color={A.core}>
           <LineChart points={waists} color={A.core} height={110} startLabel={nice(weights.filter((w) => w.waist_cm != null && w.day >= cutoff)[0].day)} />
         </Section>
       )}
 
       {history.length > 0 && (
-        <Section title="History">
+        <Section title="History" icon="time-outline" color={C.muted}>
           <View>
             {(showAll ? history : history.slice(0, 8)).map((w, i, arr) => {
               const prev = history[i + 1];
@@ -221,12 +221,14 @@ function WeightTab() {
                   <Text style={st.hKg}>{w.kg != null ? `${w.kg} kg` : ''}</Text>
                   <Text style={[st.hDiff, { color: col }]}>{diff ? `${diff > 0 ? '+' : ''}${diff}` : ''}</Text>
                   <Text style={[st.hDiff, { color: A.core, width: 64 }]}>{w.waist_cm != null ? `${w.waist_cm} cm` : ''}</Text>
-                  <Pressable onPress={() => deleteWeight(w.day)} hitSlop={8}><Text style={{ color: C.faint }}>✕</Text></Pressable>
+                  <Pressable onPress={() => deleteWeight(w.day)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete the weigh in on ${nice(w.day)}`} style={(p) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: A.over + '22' }]}>
+                    {(p: any) => <Ionicons name="trash-outline" size={16} color={hovered(p) ? A.over : C.faint} />}
+                  </Pressable>
                 </View>
               );
             })}
           </View>
-          {history.length > 8 && <Button small kind="ghost" title={showAll ? 'Show less' : `Show all ${history.length}`} onPress={() => setShowAll(!showAll)} />}
+          {history.length > 8 && <Button small kind="ghost" icon={showAll ? 'chevron-up' : 'chevron-down'} title={showAll ? 'Show less' : `Show all ${history.length}`} onPress={() => setShowAll(!showAll)} />}
         </Section>
       )}
     </>
@@ -312,13 +314,13 @@ function FoodTab() {
         <Stat value={`${onTarget}`} label="Days on target" color={A.up} />
       </Row>
 
-      <Section title="Calories" right={t.ready ? <Text style={st.small}>Goal {t.kcal} kcal</Text> : undefined}>
-        <BarChart data={bars} height={120} color={A.cardio} emptyText="Log food to see your calorie report" />
+      <Section title="Calories" icon="flame" color={A.carbs} right={t.ready ? <Text style={st.small}>Goal {t.kcal} kcal</Text> : undefined}>
+        <BarChart data={bars} height={120} color={A.cardio} reference={t.ready ? { value: t.kcal!, label: 'of your calorie goal' } : undefined} emptyText="Log food to see your calorie report" />
       </Section>
 
       {logged.length > 0 && (
         <>
-          <Section title="Daily average vs goal">
+          <Section title="Daily average vs goal" icon="speedometer-outline" color={A.carbs}>
             <Card style={{ gap: 12 }}>
               <AvgBar label="Protein" v={avg.protein} goal={t.protein} color={A.protein} />
               <AvgBar label="Carbs" v={avg.carbs} goal={t.carbs} color={A.carbs} />
@@ -328,9 +330,9 @@ function FoodTab() {
             </Card>
           </Section>
 
-          <Section title="Where your calories came from">
+          <Section title="Where your calories came from" icon="pie-chart-outline" color={A.fat}>
             <Card style={{ gap: 12 }}>
-              <Stacked parts={split.map((p) => ({ v: p.pct, color: p.color }))} />
+              <Stacked parts={split.map((p) => ({ v: p.pct, color: p.color, label: p.label }))} />
               <Row style={{ justifyContent: 'space-between' }}>
                 {split.map((p) => (
                   <View key={p.label} style={{ flex: 1 }}>
@@ -342,9 +344,9 @@ function FoodTab() {
             </Card>
           </Section>
 
-          <Section title="By meal">
+          <Section title="By meal" icon="restaurant-outline" color={A.up}>
             <Card style={{ gap: 12 }}>
-              <Stacked parts={meals.map((x) => ({ v: x.kcal / mealTotal, color: MEAL_COLORS[x.m] }))} />
+              <Stacked parts={meals.map((x) => ({ v: x.kcal / mealTotal, color: MEAL_COLORS[x.m], label: MEAL_LABELS[x.m] }))} />
               <Row style={{ justifyContent: 'space-between' }}>
                 {meals.map((x) => (
                   <View key={x.m} style={{ flex: 1 }}>
@@ -356,7 +358,7 @@ function FoodTab() {
             </Card>
           </Section>
 
-          <Section title="Highest in calories">
+          <Section title="Highest in calories" icon="podium-outline" color={A.cardio}>
             <View>
               {topFoods.map(([name, v], i) => (
                 <ListRow
@@ -372,7 +374,7 @@ function FoodTab() {
         </>
       )}
 
-      <Section title="Water">
+      <Section title="Water" icon="water" color={A.water}>
         <Row style={{ gap: 10 }}>
           <Stat value={waterAvg ? `${(waterAvg / 1000).toFixed(1)} L` : '0 L'} label="Avg on days logged" color={A.water} />
           <Stat value={t.ready ? `${(t.water! / 1000).toFixed(1)} L` : '?'} label="Daily goal" color={A.water} />
@@ -390,16 +392,22 @@ function AvgBar({ label, v, goal, color }: { label: string; v: number; goal?: nu
         <Text style={st.barLabel}>{label}</Text>
         <Text style={st.small}><Text style={{ color: C.text, fontFamily: F.bodySemi }}>{Math.round(v)} g</Text>{goal ? ` of ${goal} g · ${Math.round(pct * 100)}%` : ''}</Text>
       </Row>
-      <View style={st.track}><View style={[st.fill, { width: `${Math.min(100, Math.max(2, pct * 100))}%`, backgroundColor: pct > 1.15 && label !== 'Protein' && label !== 'Fibre' ? A.over : color }]} /></View>
+      <HoverTip lines={[`${label}: ${Math.round(v)} g${goal ? ` of ${goal} g` : ''}`, goal ? `${Math.round(pct * 100)}% of your daily goal` : '']}>
+        <View style={st.track}><View style={[st.fill, { width: `${Math.min(100, Math.max(2, pct * 100))}%`, backgroundColor: pct > 1.15 && label !== 'Protein' && label !== 'Fibre' ? A.over : color }]} /></View>
+      </HoverTip>
     </View>
   );
 }
 
-function Stacked({ parts }: { parts: { v: number; color: string }[] }) {
+function Stacked({ parts }: { parts: { v: number; color: string; label?: string }[] }) {
+  const shown = parts.filter((p) => p.v > 0);
+  const total = shown.reduce((a, p) => a + p.v, 0) || 1;
   return (
-    <View style={[st.track, { height: 12, flexDirection: 'row', gap: 2, backgroundColor: 'transparent' }]}>
-      {parts.filter((p) => p.v > 0).map((p, i) => (
-        <View key={i} style={{ flex: p.v, backgroundColor: p.color, borderRadius: 3 }} />
+    <View style={[st.track, { height: 12, flexDirection: 'row', gap: 2, backgroundColor: 'transparent', overflow: 'visible' }]}>
+      {shown.map((p, i) => (
+        <HoverTip key={i} style={{ flex: p.v }} align={i === 0 ? 'start' : i === shown.length - 1 ? 'end' : 'center'} lines={[`${p.label ? `${p.label}: ` : ''}${Math.round((p.v / total) * 100)}%`]}>
+          <View style={{ flex: 1, backgroundColor: p.color, borderRadius: 3 }} />
+        </HoverTip>
       ))}
     </View>
   );
@@ -439,7 +447,7 @@ function SleepTab() {
 
   const weekStart = shift(today, -6);
   const weekActs = activities.filter((a) => a.day >= weekStart && a.minutes);
-  const byCat = ACTIVITY_CATEGORIES.map((c) => ({ c, min: weekActs.filter((a) => (a.category ?? 'Other') === c).reduce((x, a) => x + (a.minutes ?? 0), 0) })).filter((x) => x.min > 0);
+  const byCat = [...new Set(weekActs.map((a) => a.category ?? 'Other'))].map((c) => ({ c, min: weekActs.filter((a) => (a.category ?? 'Other') === c).reduce((x, a) => x + (a.minutes ?? 0), 0) })).filter((x) => x.min > 0);
   const weekTotal = byCat.reduce((a, x) => a + x.min, 0);
   const days7 = [];
   for (let i = 6; i >= 0; i--) {
@@ -460,19 +468,19 @@ function SleepTab() {
         <Stat value={bed ?? '?'} label="Avg bedtime" color={A.protein} />
         <Stat value={wake ?? '?'} label="Avg wake up" color={A.carbs} />
       </Row>
-      <Section title="Sleep · 14 nights" right={recent.length ? <Text style={st.small}>{good} of {recent.length} nights 7h or more</Text> : undefined}>
-        <BarChart data={nights} height={110} color={A.fat} emptyText="Log your sleep on the Today page to see it here" />
+      <Section title="Sleep · 14 nights" icon="moon" color={'#8f9bff'} right={recent.length ? <Text style={st.small}>{good} of {recent.length} nights 7h or more</Text> : undefined}>
+        <BarChart data={nights} height={110} color={A.fat} reference={{ value: 8, label: 'of 8 hours' }} emptyText="Log your sleep on the Tracker tab to see it here" />
       </Section>
 
-      <Section title="Time tracked · 7 days" right={weekTotal ? <Text style={st.small}>{fmtMinutes(weekTotal)} total</Text> : undefined}>
-        <BarChart data={days7} height={100} color={A.water} emptyText="Use the time tracker on the Today page" />
+      <Section title="Time tracked · 7 days" icon="timer-outline" color={A.core} right={weekTotal ? <Text style={st.small}>{fmtMinutes(weekTotal)} total</Text> : undefined}>
+        <BarChart data={days7} height={100} color={A.water} reference={{ value: 1440, label: 'of the day' }} emptyText="Use the Tracker tab to track your day" />
         {byCat.length > 0 && (
           <Card style={{ gap: 12 }}>
-            <Stacked parts={byCat.map((x) => ({ v: x.min, color: CAT_COLORS[x.c] }))} />
+            <Stacked parts={byCat.map((x) => ({ v: x.min, color: catColor(x.c), label: x.c }))} />
             <Row wrap style={{ gap: 14 }}>
               {byCat.map((x) => (
                 <View key={x.c}>
-                  <Text style={[st.legendV, { color: CAT_COLORS[x.c] }]}>{fmtMinutes(x.min)}</Text>
+                  <Text style={[st.legendV, { color: catColor(x.c) }]}>{fmtMinutes(x.min)}</Text>
                   <Text style={st.small}>{x.c}</Text>
                 </View>
               ))}
@@ -483,7 +491,7 @@ function SleepTab() {
           <View>
             {projects.map(([title, min]) => {
               const cat = weekActs.find((a) => a.title === title)?.category ?? 'Other';
-              return <ListRow key={title} accent={CAT_COLORS[cat]} title={title} subtitle={cat} right={<Text style={st.hKg}>{fmtMinutes(min)}</Text>} />;
+              return <ListRow key={title} accent={catColor(cat)} title={title} subtitle={cat} right={<Text style={st.hKg}>{fmtMinutes(min)}</Text>} />;
             })}
           </View>
         )}
@@ -594,7 +602,7 @@ function TrainingTab() {
         <Stat value={gym.avg ? fmtDuration(gym.avg) : '0m'} label="Average visit" color={A.water} />
       </Row>
 
-      <Section title="Time in the gym · 14 days">
+      <Section title="Time in the gym · 14 days" icon="barbell-outline" color={A.fat}>
         <BarChart data={gym.bars} height={110} color={A.water} emptyText="Start the gym timer on a workout to track your time" />
         {gym.recent.length > 0 && (
           <View style={{ marginTop: 4 }}>
@@ -613,12 +621,12 @@ function TrainingTab() {
         )}
       </Section>
 
-      <Section title="Workouts per week">
+      <Section title="Workouts per week" icon="calendar-outline" color={A.up}>
         <BarChart data={weekly} height={110} color={A.up} emptyText="Your weekly training will appear here" />
       </Section>
 
       {ready.length > 0 && (
-        <Section title="Adjust next time">
+        <Section title="Adjust next time" icon="swap-vertical" color={A.carbs}>
           {ready.map((r) => {
             const e = getExercise(r.id);
             return (
@@ -634,7 +642,7 @@ function TrainingTab() {
       )}
 
       {lifts.length > 0 && (
-        <Section title="Your lifts">
+        <Section title="Your lifts" icon="trophy-outline" color={A.up}>
           <View>
             {lifts.map((l) => {
               const e = getExercise(l.id);
@@ -655,7 +663,7 @@ function TrainingTab() {
         </Section>
       )}
 
-      <Section title="When to add weight">
+      <Section title="When to add weight" icon="help-circle-outline" color={C.muted}>
         <P muted style={{ fontSize: 14 }}>
           The app uses double progression. Each exercise has a rep range, for example 8 to 12. Keep the same weight until you
           reach the top of the range (12) on every set. Then move up one step: 8 kg dumbbells become 9 kg, or the machine
@@ -688,7 +696,7 @@ function Spark({ values, change, unit }: { values: number[]; change: number | nu
 
 const st = StyleSheet.create({
   seg: { flexDirection: 'row', gap: 6, marginTop: 14, backgroundColor: C.card, borderRadius: R.lg, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border },
-  segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: R.md, borderWidth: 1, borderColor: 'transparent' },
+  segBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 8, borderRadius: R.md, borderWidth: 1, borderColor: 'transparent' },
   segText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 13 },
   small: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 17 },
   track: { height: 8, borderRadius: 4, backgroundColor: C.card2, overflow: 'hidden' },

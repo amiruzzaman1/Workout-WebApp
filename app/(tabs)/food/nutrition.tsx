@@ -1,16 +1,18 @@
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, Chip, Eyebrow, H1, Label, P, Row, Screen, Section, Slider } from '../../../src/components/ui';
+import { Button, Chip, Eyebrow, H1, hovered, Label, P, Row, Screen, Section, Slider, smooth } from '../../../src/components/ui';
 import { DobInput, NumberField, WorkFields } from '../../../src/components/BodyFields';
 import { ageFrom, cmToFtIn, computeTargets, ftInToCm } from '../../../src/lib/nutrition';
-import { DEFAULT_PROFILE, useStore } from '../../../src/lib/store';
+import { DEFAULT_PROFILE, onlyChanged, useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
 
 export default function Nutrition() {
   const { profile, saveProfile } = useStore();
   const router = useRouter();
   const [f, setF] = useState<any>({ ...DEFAULT_PROFILE, ...(profile ?? {}) });
+  // What the form started from, so a save only sends the fields you changed.
+  const base = useRef<any>({ ...DEFAULT_PROFILE, ...(profile ?? {}) });
   const [dob, setDob] = useState<string | null>(() => {
     const p: any = profile;
     if (p?.birth_date) return p.birth_date;
@@ -27,6 +29,7 @@ export default function Nutrition() {
   useEffect(() => {
     if (synced || !profile) return;
     setF({ ...DEFAULT_PROFILE, ...profile });
+    base.current = { ...DEFAULT_PROFILE, ...profile };
     const p: any = profile;
     const a = ageFrom(p.birth_year);
     setDob(p.birth_date ?? (a ? `${new Date().getFullYear() - a}-07-01` : null));
@@ -42,7 +45,7 @@ export default function Nutrition() {
   async function save() {
     setBusy(true); setErr(null);
     try {
-      await saveProfile({
+      const payload = {
         height_cm: f.height_cm ? Number(f.height_cm) : null,
         weight_kg: f.weight_kg ? Number(f.weight_kg) : null,
         sex: f.sex ?? null,
@@ -54,7 +57,9 @@ export default function Nutrition() {
         target_weight_kg: f.target_weight_kg ? Number(f.target_weight_kg) : null,
         calorie_override: f.calorie_override ? Number(f.calorie_override) : null,
         water_goal_ml: f.water_goal_ml ? Number(f.water_goal_ml) : null,
-      });
+      };
+      await saveProfile(onlyChanged(base.current, payload));
+      base.current = { ...base.current, ...payload };
       router.back();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -71,7 +76,7 @@ export default function Nutrition() {
         <Label>Height</Label>
         <Row style={{ gap: 0 }}>
           {(['cm', 'ft'] as const).map((u) => (
-            <Pressable key={u} onPress={() => setUnit(u)} style={[st.seg, unit === u && st.segOn]}>
+            <Pressable key={u} onPress={() => setUnit(u)} accessibilityRole="button" accessibilityState={{ selected: unit === u }} style={(p) => [st.seg, smooth, hovered(p) && unit !== u && { backgroundColor: C.card2 }, unit === u && st.segOn]}>
               <Text style={[st.segText, unit === u && { color: C.inverseText }]}>{u === 'cm' ? 'CM' : 'FT / IN'}</Text>
             </Pressable>
           ))}
@@ -121,7 +126,7 @@ export default function Nutrition() {
         <View style={{ flex: 1, minWidth: 0 }}>
           <NumberField value={goalW} onChange={(v) => set('target_weight_kg', v)} step={0.5} min={30} max={300} placeholder="76" suffix="kg" />
         </View>
-        {goalW ? <Button small kind="secondary" title="Clear" onPress={() => set('target_weight_kg', null)} /> : null}
+        {goalW ? <Button small kind="secondary" icon="close" title="Clear" onPress={() => set('target_weight_kg', null)} /> : null}
       </Row>
       <Slider value={goalW ?? (weight || 70)} min={35} max={180} step={0.5} onChange={(v) => set('target_weight_kg', v)} />
       <P muted style={{ fontSize: 13 }}>This sets your calories: below your current weight gives a deficit, above it gives a surplus.</P>
@@ -152,7 +157,7 @@ export default function Nutrition() {
 
       {t.ready ? (
         <>
-          <Section title="Where you are">
+          <Section title="Where you are" icon="body" color={A.protein}>
             <BmiScale bmi={t.bmi!} label={t.bmiLabel!} />
             <P muted style={{ fontSize: 13 }}>
               A healthy BMI for your height is about {t.healthyRange![0]} to {t.healthyRange![1]} kg. It's a rough guide: it can't tell
@@ -170,7 +175,7 @@ export default function Nutrition() {
             </P>
           </Section>
 
-          <Section title={`Eat per day · ${GOAL_LABELS[(f.goal as string) ?? 'general']}`}>
+          <Section title={`Eat per day · ${GOAL_LABELS[(f.goal as string) ?? 'general']}`} icon="nutrition" color={A.carbs}>
             <Text style={st.bigValue}>{t.kcal}<Text style={st.bigUnit}> kcal</Text></Text>
             <Text style={st.meta}>{t.rationale}</Text>
             {t.goalNote && (
@@ -184,7 +189,7 @@ export default function Nutrition() {
               <Row style={{ justifyContent: 'space-between' }}>
                 <Text style={st.meta}>Drag to set your own target</Text>
                 {f.calorie_override ? (
-                  <Pressable onPress={() => set('calorie_override', null)}><Text style={st.link}>Reset to recommended</Text></Pressable>
+                  <Pressable onPress={() => set('calorie_override', null)} accessibilityRole="button" style={(p) => [{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card2 }]}><Text style={st.link}>Reset to recommended</Text></Pressable>
                 ) : (
                   <Text style={st.meta}>Recommended</Text>
                 )}
@@ -203,7 +208,7 @@ export default function Nutrition() {
           </Section>
 
           {t.tips && t.tips.length > 0 && (
-            <Section title="For your goal">
+            <Section title="For your goal" icon="flag" color={A.up}>
               <View>
                 {t.tips.map((tip, i) => (
                   <View key={i} style={st.tipRow}>
@@ -212,12 +217,12 @@ export default function Nutrition() {
                   </View>
                 ))}
               </View>
-              <Button kind="secondary" small title="Change my goal" onPress={() => router.push('/you/onboarding')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+              <Button kind="secondary" small icon="flag-outline" title="Change my goal" onPress={() => router.push('/user/onboarding')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
             </Section>
           )}
 
           {goalW && t.direction !== 'hold' && (
-            <Section title="Getting there">
+            <Section title="Getting there" icon="trending-down" color={A.fat}>
               <View style={[st.projection, { borderLeftColor: t.direction === 'lose' ? A.fibre : A.protein }]}>
                 <Text style={st.projLead}>
                   {t.direction === 'lose' ? 'Losing' : 'Gaining'} about {Math.abs(t.weeklyKg!).toFixed(2)} kg a week
@@ -239,7 +244,7 @@ export default function Nutrition() {
       )}
 
       {err && <Text style={{ color: C.danger, fontFamily: F.body }}>{err}</Text>}
-      <Button title="Save" onPress={save} loading={busy} style={{ marginTop: 20 }} />
+      <Button icon="checkmark" title="Save" onPress={save} loading={busy} style={{ marginTop: 20 }} />
       <P muted style={{ fontSize: 12 }}>
         Estimates from the standard Mifflin-St Jeor formulas, not medical advice. If you have a health condition, or want a plan built
         around you, see a doctor or a registered dietitian.
@@ -358,7 +363,7 @@ const st = StyleSheet.create({
   seg: { paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: C.border },
   segOn: { backgroundColor: C.inverse, borderColor: C.inverse },
   segText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1 },
-  bigValue: { color: C.text, fontFamily: F.display, fontSize: 44, letterSpacing: -1.6 },
+  bigValue: { color: C.text, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7 },
   bigUnit: { color: C.muted, fontFamily: F.body, fontSize: 15, letterSpacing: 0 },
   badge: { color: C.inverseText, backgroundColor: C.inverse, fontFamily: F.bodySemi, fontSize: 11, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 2, overflow: 'hidden' },
   noteBox: { borderWidth: StyleSheet.hairlineWidth, borderColor: C.borderStrong, borderRadius: R.sm, padding: 12, marginTop: 10 },

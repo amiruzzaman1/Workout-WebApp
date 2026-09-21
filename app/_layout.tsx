@@ -8,6 +8,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View } from 'react-native';
+import { ConfirmHost } from '../src/components/ConfirmHost';
 import { Loading } from '../src/components/ui';
 import { StoreProvider, useStore } from '../src/lib/store';
 import { C, F } from '../src/lib/theme';
@@ -21,7 +22,7 @@ function Gate() {
     if (!ready) return;
     const top = segments[0] as string | undefined;
     if (!session && top !== 'login') router.replace('/login');
-    else if (session && !profile && !(segments as string[]).includes('onboarding')) router.replace('/you/onboarding');
+    else if (session && !profile && top !== 'welcome' && !(segments as string[]).includes('onboarding')) router.replace('/welcome');
     else if (session && profile && top === 'login') router.replace('/');
   }, [ready, session, profile, segments, router]);
 
@@ -39,7 +40,9 @@ function Gate() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="welcome" options={{ headerShown: false }} />
       </Stack>
+      <ConfirmHost />
       {!ready && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
           <Loading />

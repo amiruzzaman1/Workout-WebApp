@@ -3,12 +3,13 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { ExerciseList } from '../../../../../src/components/ExerciseList';
-import { Button, Card, Chip, Input, Label, P, Row, Screen } from '../../../../../src/components/ui';
+import { Button, Card, Chip, hovered, Input, Label, P, Row, Screen, smooth } from '../../../../../src/components/ui';
 import { confirm } from '../../../../../src/lib/confirm';
-import { Exercise, getExercise, titleCase } from '../../../../../src/lib/exercises';
+import { Exercise, getExercise, groupOf, titleCase } from '../../../../../src/lib/exercises';
+import { groupColor } from '../../../../../src/lib/groups';
 import { alternativesFor, DAY_NAMES, METRIC_LABELS, Metric, metricFor, PlanData, PlanItem, PlanSession, uid } from '../../../../../src/lib/planner';
 import { useStore } from '../../../../../src/lib/store';
-import { C, F } from '../../../../../src/lib/theme';
+import { A, C, F } from '../../../../../src/lib/theme';
 
 export default function SessionEditor() {
   const params = useLocalSearchParams<{ day: string; idx: string }>();
@@ -67,7 +68,7 @@ export default function SessionEditor() {
   }
 
   async function deleteSession() {
-    if (!(await confirm('Delete this session?', 'It will be removed from your weekly plan.'))) return;
+    if (!(await confirm('Delete this session?', 'It will be removed from your weekly plan.', { confirmText: 'Delete', danger: true }))) return;
     const data: PlanData = {
       ...plan!.data,
       days: plan!.data.days.map((d) => (d.day === day ? { ...d, sessions: d.sessions.filter((_, i) => i !== idx) } : d)),
@@ -82,19 +83,19 @@ export default function SessionEditor() {
       <Screen>
         <Label>Session name</Label>
         <Input value={draft.title} onChangeText={(t) => setDraft({ ...draft, title: t })} onBlur={() => commit(draft)} />
-        {draft.warmup && <P muted style={{ fontSize: 14 }}>Warm-up: {draft.warmup}</P>}
+        {draft.warmup && <P muted style={{ fontSize: 14 }}>Warm-up: {draft.warmup.replace(/^Then /, 'Do ')}</P>}
         {err && <Text style={{ color: C.danger }}>{err}</Text>}
 
         {draft.items.map((it, i) => {
           const e = getExercise(it.exerciseId);
           const alts = swapOpen === it.uid ? alternativesFor(it, equipment) : [];
           return (
-            <Card key={it.uid}>
-              <Pressable onPress={() => e && router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <Card key={it.uid} style={{ borderLeftWidth: 3, borderLeftColor: e ? groupColor(groupOf(e)) : C.border }}>
+              <Pressable onPress={() => e && router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" style={(p) => [{ flexDirection: 'row', gap: 12, alignItems: 'center', borderRadius: 8 }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
                 {e && <ExerciseThumb exercise={e} />}
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId} ›</Text>
-                  <Text style={{ color: C.muted, fontSize: 13, fontFamily: F.body }}>{e?.primary.map(titleCase).join(', ')} · tap for animation & how-to</Text>
+                  <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId}</Text>
+                  <Text style={{ color: e ? groupColor(groupOf(e)) : C.muted, fontSize: 13, fontFamily: F.bodyMed }}>{e?.primary.map(titleCase).join(', ')} <Text style={{ color: C.muted, fontFamily: F.body }}>· tap for how-to</Text></Text>
                 </View>
               </Pressable>
 
@@ -130,10 +131,10 @@ export default function SessionEditor() {
               {it.note && <P muted style={{ fontSize: 13 }}>{it.note}</P>}
 
               <Row wrap style={{ marginTop: 6 }}>
-                <Button small kind="secondary" title="↑" onPress={() => move(i, -1)} />
-                <Button small kind="secondary" title="↓" onPress={() => move(i, 1)} />
-                <Button small kind="secondary" title={swapOpen === it.uid ? 'Close' : 'Swap'} onPress={() => setSwapOpen(swapOpen === it.uid ? null : it.uid)} />
-                <Button small kind="danger" title="Remove" onPress={() => remove(it.uid)} />
+                <Button small kind="secondary" icon="arrow-up" title="" label="Move up" onPress={() => move(i, -1)} disabled={i === 0} />
+                <Button small kind="secondary" icon="arrow-down" title="" label="Move down" onPress={() => move(i, 1)} disabled={i === draft.items.length - 1} />
+                <Button small kind="secondary" icon={swapOpen === it.uid ? 'close' : 'swap-horizontal'} tint={A.fat} title={swapOpen === it.uid ? 'Close' : 'Swap'} onPress={() => setSwapOpen(swapOpen === it.uid ? null : it.uid)} />
+                <Button small kind="danger" icon="trash-outline" title="Remove" onPress={() => remove(it.uid)} />
               </Row>
 
               {swapOpen === it.uid && (
@@ -142,29 +143,29 @@ export default function SessionEditor() {
                   {alts.map((id) => {
                     const a = getExercise(id)!;
                     return (
-                      <Pressable key={id} onPress={() => { updateItem(it.uid, { exerciseId: id }); setSwapOpen(null); }}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, backgroundColor: C.card2 }}>
+                      <Pressable key={id} onPress={() => { updateItem(it.uid, { exerciseId: id }); setSwapOpen(null); }} accessibilityRole="button"
+                        style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, backgroundColor: C.card2, borderWidth: 1, borderColor: 'transparent' }, smooth, hovered(p) && { borderColor: C.text }]}>
                         <ExerciseThumb exercise={a} size={40} />
                         <Text style={{ color: C.text, flex: 1, fontFamily: F.body }}>{a.name}</Text>
                       </Pressable>
                     );
                   })}
-                  <Button small kind="secondary" title="Choose any exercise…" onPress={() => setPicker({ mode: 'swap', uid: it.uid })} />
+                  <Button small kind="secondary" icon="search" title="Choose any exercise" onPress={() => setPicker({ mode: 'swap', uid: it.uid })} />
                 </View>
               )}
             </Card>
           );
         })}
 
-        <Button title="+ Add exercise" onPress={() => setPicker({ mode: 'add' })} />
-        <Button kind="danger" title="Delete this session" onPress={deleteSession} />
+        <Button icon="add-circle-outline" title="Add exercise" onPress={() => setPicker({ mode: 'add' })} />
+        <Button kind="danger" icon="trash-outline" title="Delete this session" onPress={deleteSession} />
       </Screen>
 
       <Modal visible={!!picker} animationType="slide" onRequestClose={() => setPicker(null)}>
         <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: 12 }}>
           <Row style={{ paddingHorizontal: 16, justifyContent: 'space-between', width: '100%', maxWidth: 760, alignSelf: 'center' }}>
-            <Text style={{ color: C.text, fontSize: 20, fontFamily: F.display }}>{picker?.mode === 'add' ? 'Add exercise' : 'Swap exercise'}</Text>
-            <Button small kind="secondary" title="Cancel" onPress={() => setPicker(null)} />
+            <Text style={{ color: C.text, fontSize: 18, fontFamily: F.display }}>{picker?.mode === 'add' ? 'Add exercise' : 'Swap exercise'}</Text>
+            <Button small kind="secondary" icon="close" title="Cancel" onPress={() => setPicker(null)} />
           </Row>
           <ExerciseList onPick={onPicked} />
         </View>

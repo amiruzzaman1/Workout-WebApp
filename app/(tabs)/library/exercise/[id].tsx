@@ -1,12 +1,15 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import { BarChart } from '../../../../src/components/BarChart';
 import { ExerciseAnimation } from '../../../../src/components/ExerciseAnimation';
+import { GroupIcon } from '../../../../src/components/GroupIcon';
 import { Bullets, Button, Eyebrow, H1, P, Row, Screen, Section } from '../../../../src/components/ui';
 import { MACHINE_BY_KEY } from '../../../../src/data/machines';
 import { metricFor } from '../../../../src/lib/planner';
-import { getExercise, isAvailable, requiredKey, titleCase } from '../../../../src/lib/exercises';
+import { getExercise, groupOf, isAvailable, requiredKey, titleCase } from '../../../../src/lib/exercises';
+import { groupColor } from '../../../../src/lib/groups';
 import { fmtWeight, sessionsFor, suggest, todayISO, workingWeight } from '../../../../src/lib/progress';
 import { useStore } from '../../../../src/lib/store';
 import { A, C, F } from '../../../../src/lib/theme';
@@ -49,18 +52,29 @@ export default function ExerciseDetail() {
       <Stack.Screen options={{ title: '' }} />
       <ExerciseAnimation exercise={e} />
       <View style={{ gap: 6, marginTop: 8 }}>
-        <Eyebrow>{[titleCase(e.level), titleCase(e.equipment), e.mechanic && titleCase(e.mechanic)].filter(Boolean).join(' · ')}</Eyebrow>
-        <H1 style={{ fontSize: 32, lineHeight: 36 }}>{e.name}</H1>
+        <Row wrap style={{ gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderColor: groupColor(groupOf(e)), borderRadius: 999, paddingLeft: 8, paddingRight: 12, paddingVertical: 4 }}>
+            <GroupIcon group={groupOf(e)} size={22} color={C.inverse} />
+            <Text style={{ color: groupColor(groupOf(e)), fontFamily: F.bodySemi, fontSize: 11, letterSpacing: 0.6 }}>{groupOf(e)}</Text>
+          </View>
+          <Eyebrow>{[titleCase(e.level), titleCase(e.equipment), e.mechanic && titleCase(e.mechanic)].filter(Boolean).join(' · ')}</Eyebrow>
+        </Row>
+        <H1>{e.name}</H1>
         <P muted>
           {e.primary.map(titleCase).join(', ')}
           {e.secondary.length > 0 ? `. Also ${e.secondary.map(titleCase).join(', ').toLowerCase()}` : ''}
         </P>
-        {!available && <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 13 }}>Not marked as available at your gym.</Text>}
+        {!available && (
+          <Row style={{ gap: 6 }}>
+            <Ionicons name="alert-circle-outline" size={16} color={A.carbs} />
+            <Text style={{ color: A.carbs, fontFamily: F.bodyMed, fontSize: 13 }}>Not marked as available at your gym.</Text>
+          </Row>
+        )}
       </View>
 
       {machine && machine.setup.length > 0 && (
         <Row style={{ marginTop: 4 }}>
-          <Button kind="secondary" small title={`How to set up the ${machine.name}`} onPress={() => router.push(`/library/machine/${machine.key}`)} />
+          <Button kind="secondary" small icon="construct-outline" tint={A.fat} title={`How to set up the ${machine.name}`} onPress={() => router.push(`/library/machine/${machine.key}`)} />
         </Row>
       )}
 
@@ -73,7 +87,7 @@ export default function ExerciseDetail() {
       )}
 
       {history.length > 0 && (
-        <Section title={unit === 'bw' ? 'Your reps over time' : 'Your working weight'}>
+        <Section title={unit === 'bw' ? 'Your reps over time' : 'Your working weight'} icon="trending-up" color={A.protein}>
           <BarChart data={chart} height={120} color={A.protein} />
           <View style={{ marginTop: 6 }}>
             {history.slice(0, 6).map((s) => (
@@ -88,7 +102,7 @@ export default function ExerciseDetail() {
         </Section>
       )}
 
-      <Section title="How to do it">
+      <Section title="How to do it" icon="list" color={A.fat}>
         <Bullets items={e.steps.length ? e.steps : ['No instructions yet.']} numbered />
       </Section>
       {e.level === 'expert' && <P muted>This is an advanced movement, so learn the basics first.</P>}

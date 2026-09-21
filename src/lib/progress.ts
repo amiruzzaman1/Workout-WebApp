@@ -123,7 +123,7 @@ export function suggest(
     if (sessions.length === 0) {
       return {
         kind: 'first', unit,
-        headline: metric === 'seconds' ? `Hold for ${lo} to ${hi}${word}` : `Aim for ${hi}${word}`,
+        headline: metric === 'seconds' ? (lo === hi ? `Hold for ${hi}${word}` : `Hold for ${lo} to ${hi}${word}`) : `Aim for ${hi}${word}`,
         detail: metric === 'seconds'
           ? 'Stop the set when your form goes, not when the timer says so. Use the timer button to count it.'
           : 'Steady pace, one where you could still talk in short sentences.',

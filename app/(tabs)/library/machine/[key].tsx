@@ -22,7 +22,7 @@ export default function MachineDetail() {
       {exs[0] && <ExerciseAnimation exercise={exs[0]} />}
       <View style={{ gap: 6, marginTop: 8 }}>
         <Eyebrow>Machine guide{m.muscles.length ? ` · ${m.muscles.map(titleCase).join(', ')}` : ''}</Eyebrow>
-        <H1 style={{ fontSize: 32, lineHeight: 36 }}>{m.name}</H1>
+        <H1>{m.name}</H1>
         <P muted>{m.summary}</P>
       </View>
       <Row style={{ justifyContent: 'space-between', paddingVertical: 12, borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: C.border, marginTop: 8 }}>

@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { C, F } from '../lib/theme';
+import { TipBubble } from './ui';
 
-export type Point = { x: number; y: number; caption: string };
+export type Point = { x: number; y: number; caption: string; note?: string };
+
+const TIP_BOX = 200;
 
 /** A simple trend line with an optional goal line. Tap to read a point. */
 export function LineChart({
@@ -12,6 +15,7 @@ export function LineChart({
 }) {
   const [w, setW] = useState(0);
   const [sel, setSel] = useState<number | null>(null);
+  const [tip, setTip] = useState<number | null>(null);
   if (points.length === 0) {
     return (
       <View style={[st.empty, { height }]}>
@@ -28,7 +32,7 @@ export function LineChart({
   const pad = 8;
   const X = (x: number) => (x1 === x0 ? w / 2 : pad + ((x - x0) / (x1 - x0)) * (w - pad * 2));
   const Y = (y: number) => pad + (1 - (y - lo) / (hi - lo)) * (height - pad * 2);
-  const active = sel ?? points.length - 1;
+  const active = tip ?? sel ?? points.length - 1;
   
   function pick(locX: number) {
     let best = 0, bd = Infinity;
@@ -66,6 +70,30 @@ export function LineChart({
             }} />
           );
         })}
+        {/* one invisible column per point, so hovering anywhere along the line picks the nearest point */}
+        {w > 0 && points.map((p, i) => {
+          const left = i === 0 ? 0 : (X(points[i - 1].x) + X(p.x)) / 2;
+          const right = i === points.length - 1 ? w : (X(p.x) + X(points[i + 1].x)) / 2;
+          return (
+            <Pressable
+              key={'h' + i}
+              onHoverIn={() => setTip(i)}
+              onHoverOut={() => setTip((t) => (t === i ? null : t))}
+              onPress={() => { setSel(i); setTip(i); setTimeout(() => setTip((t) => (t === i ? null : t)), 2500); }}
+              style={{ position: 'absolute', left, width: Math.max(4, right - left), top: 0, bottom: 0 }}
+            />
+          );
+        })}
+        {tip != null && w > 0 && points[tip] && (() => {
+          const p = points[tip];
+          const yy = Y(p.y);
+          const left = Math.max(0, Math.min(w - TIP_BOX, X(p.x) - TIP_BOX / 2));
+          return (
+            <View pointerEvents="none" style={{ position: 'absolute', left, width: TIP_BOX, alignItems: 'center', zIndex: 40, ...(yy > 58 ? { bottom: height - yy + 8 } : { top: yy + 10 }) }}>
+              <TipBubble lines={[p.caption, p.note ?? '']} />
+            </View>
+          );
+        })()}
         {goal != null && w > 0 && (
           <Text style={[st.goal, { top: Math.max(0, Math.min(height - 16, Y(goal) - 16)) }]}>{goalLabel ?? `Goal ${goal}`}</Text>
         )}

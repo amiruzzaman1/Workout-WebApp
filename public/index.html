@@ -4,11 +4,12 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1120" />
+    <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Workout" />
+    <meta name="apple-mobile-web-app-title" content="Forge" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>%WEB_TITLE%</title>
@@ -22,7 +23,31 @@
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {
         overflow: hidden;
-        background-color: #0b1120;
+        background-color: #000000;
+      }
+      /* Dark scrollbars and form controls, a clear ring when moving with the keyboard, white text selection. */
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #3a3a3a transparent;
+      }
+      :focus-visible {
+        outline: 2px solid #ffffff;
+        outline-offset: 2px;
+      }
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: none;
+      }
+      ::selection {
+        background: #ffffff;
+        color: #000000;
+      }
+      [role="button"],
+      [role="checkbox"] {
+        user-select: none;
       }
       /* These styles make the root element full-height */
       #root {

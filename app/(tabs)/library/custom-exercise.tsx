@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Text } from 'react-native';
-import { Button, Card, Chip, Input, Label, Row, Screen } from '../../../src/components/ui';
+import { Button, Card, Chip, Eyebrow, H1, Input, Label, Row, Screen } from '../../../src/components/ui';
 import { MUSCLE_GROUPS, titleCase } from '../../../src/lib/exercises';
 import { useStore } from '../../../src/lib/store';
 import { C } from '../../../src/lib/theme';
@@ -30,6 +30,8 @@ export default function CustomExercise() {
 
   return (
     <Screen>
+      <Eyebrow>Library</Eyebrow>
+      <H1>New exercise</H1>
       <Card>
         <Label>Name</Label>
         <Input value={name} onChangeText={setName} placeholder="e.g. Jetts glute kickback machine" />
@@ -45,7 +47,7 @@ export default function CustomExercise() {
         <Input value={steps} onChangeText={setSteps} multiline style={{ minHeight: 120, textAlignVertical: 'top' }} />
       </Card>
       {err && <Text style={{ color: C.danger }}>{err}</Text>}
-      <Button title="Save exercise" onPress={save} loading={busy} />
+      <Button icon="checkmark" title="Save exercise" onPress={save} loading={busy} />
     </Screen>
   );
 }

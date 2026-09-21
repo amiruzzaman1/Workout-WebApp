@@ -242,3 +242,63 @@ drop policy if exists "own weights" on public.weight_logs;
 create policy "own weights" on public.weight_logs for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.weight_logs to authenticated;
+
+-- v10: foods added by users, shared between everyone who signs in.
+-- Anyone signed in can read and add. Anyone signed in can correct a food (and the app shows who last touched it).
+-- Only the person who added a food can delete it. The same name can exist twice.
+create table if not exists public.shared_foods (
+  id uuid primary key default gen_random_uuid(),
+  created_by uuid default auth.uid() references auth.users (id) on delete set null,
+  updated_by uuid references auth.users (id) on delete set null,
+  name text not null check (char_length(name) between 1 and 200),
+  brand text check (brand is null or char_length(brand) <= 120),
+  barcode text check (barcode is null or char_length(barcode) <= 32),
+  kcal_100 numeric(7,2) not null default 0 check (kcal_100 between 0 and 1000),
+  protein_100 numeric(7,2) not null default 0 check (protein_100 between 0 and 100),
+  carbs_100 numeric(7,2) not null default 0 check (carbs_100 between 0 and 100),
+  sugars_100 numeric(7,2) check (sugars_100 is null or sugars_100 between 0 and 100),
+  fat_100 numeric(7,2) not null default 0 check (fat_100 between 0 and 100),
+  sat_fat_100 numeric(7,2) check (sat_fat_100 is null or sat_fat_100 between 0 and 100),
+  fibre_100 numeric(7,2) check (fibre_100 is null or fibre_100 between 0 and 100),
+  sodium_100 numeric(8,2) check (sodium_100 is null or sodium_100 >= 0),
+  serving_g numeric(7,2), serving_label text,
+  unit text not null default 'g' check (unit in ('g', 'ml')),
+  source text default 'User added',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists shared_foods_updated_idx on public.shared_foods (updated_at desc);
+create index if not exists shared_foods_barcode_idx on public.shared_foods (barcode) where barcode is not null;
+
+-- Whoever edits a row is recorded by the database, so it cannot be faked from the app.
+create or replace function public.shared_foods_touch() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  new.created_by := old.created_by;
+  new.created_at := old.created_at;
+  new.updated_by := (select auth.uid());
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists shared_foods_touch on public.shared_foods;
+create trigger shared_foods_touch before update on public.shared_foods
+  for each row execute function public.shared_foods_touch();
+
+alter table public.shared_foods enable row level security;
+drop policy if exists "read shared foods" on public.shared_foods;
+create policy "read shared foods" on public.shared_foods for select to authenticated
+  using ((select auth.uid()) is not null);
+drop policy if exists "add shared foods" on public.shared_foods;
+create policy "add shared foods" on public.shared_foods for insert to authenticated
+  with check ((select auth.uid()) = created_by);
+drop policy if exists "edit shared foods" on public.shared_foods;
+create policy "edit shared foods" on public.shared_foods for update to authenticated
+  using ((select auth.uid()) is not null) with check ((select auth.uid()) is not null);
+drop policy if exists "delete own shared foods" on public.shared_foods;
+create policy "delete own shared foods" on public.shared_foods for delete to authenticated
+  using ((select auth.uid()) = created_by);
+grant select, insert, update, delete on public.shared_foods to authenticated;
+
+-- v11: time tracker. Each task keeps every block of time (from and to) so a task can be continued, and you can add your own categories.
+alter table public.activity_logs add column if not exists segments jsonb not null default '[]'::jsonb;
+alter table public.profiles add column if not exists time_categories text[];

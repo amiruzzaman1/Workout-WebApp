@@ -1,9 +1,10 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
-import { Button, Eyebrow, H1, P, Row, Screen } from '../../../../../src/components/ui';
+import { Button, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, smooth } from '../../../../../src/components/ui';
 import { getExercise, groupOf } from '../../../../../src/lib/exercises';
 import { groupColor } from '../../../../../src/lib/groups';
 import { DAY_NAMES, METRIC_SHORT, metricFor, PlanItem } from '../../../../../src/lib/planner';
@@ -16,14 +17,16 @@ import { A, C, F, R } from '../../../../../src/lib/theme';
 type Draft = { weight: string; reps: string; logId?: string };
 
 export default function WorkoutScreen() {
-  const params = useLocalSearchParams<{ day: string; idx: string }>();
+  const params = useLocalSearchParams<{ day: string; idx: string; date?: string }>();
   const day = Number(params.day);
   const idx = Number(params.idx);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { plan, logs, visits, activeVisit, startVisit, endVisit } = useStore();
   const session = plan?.data.days.find((d) => d.day === day)?.sessions[idx];
-  const today = todayISO();
+  // The day being logged. A past day lets you fill in a workout you forgot to record.
+  const today = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : todayISO();
+  const isToday = today === todayISO();
 
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -49,9 +52,9 @@ export default function WorkoutScreen() {
   const totalSets = mainItems.reduce((a, it) => a + Math.max(1, it.sets), 0);
   const pct = totalSets ? Math.min(1, doneSets / totalSets) : 0;
   const todayTotal = secondsByDate(visits, now).get(today) ?? 0;
-  const ensureTimer = () => { if (!activeVisit) startVisit(session.title); };
+  const ensureTimer = () => { if (isToday && !activeVisit) startVisit(session.title); };
   async function finish() {
-    await endVisit();
+    if (isToday) await endVisit();
     router.replace('/progress');
   }
 
@@ -61,23 +64,26 @@ export default function WorkoutScreen() {
         options={{
           title: '',
           headerRight: () => (
-            <Pressable onPress={() => router.push(`/session/${day}/${idx}`)} style={{ paddingHorizontal: 12 }}>
+            <Pressable onPress={() => router.push(`/session/${day}/${idx}`)} accessibilityRole="button" accessibilityLabel="Edit this workout" style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
+              <Ionicons name="create-outline" size={16} color={C.text} />
               <Text style={{ color: C.text, fontFamily: F.bodyMed }}>Edit</Text>
             </Pressable>
           ),
         }}
       />
       <Screen>
-        <Eyebrow>{DAY_NAMES[day]}{day === new Date().getDay() ? ' · today' : ''}</Eyebrow>
+        <Eyebrow>{isToday ? `${DAY_NAMES[day]} · today` : `Logging for ${DAY_NAMES[day]} ${today}`}</Eyebrow>
         <H1>{session.title}</H1>
         <View style={{ gap: 8, marginTop: 4 }}>
           <Row style={{ justifyContent: 'space-between' }}>
             <Text style={st.meta}>{doneSets} of {totalSets} sets</Text>
             <Text style={st.meta}>{Math.round(pct * 100)}%</Text>
           </Row>
-          <View style={st.track}><View style={[st.fill, { width: `${pct * 100}%` }]} /></View>
+          <HoverTip align="start" lines={[`${doneSets} of ${totalSets} sets`, `${Math.round(pct * 100)}% of the workout done`]}>
+            <View style={st.track}><View style={[st.fill, { width: `${pct * 100}%` }]} /></View>
+          </HoverTip>
         </View>
-        <View style={st.timer}>
+        {isToday && <View style={st.timer}>
           <View style={{ flex: 1 }}>
             <Text style={st.timerLabel}>{activeVisit ? 'IN THE GYM' : todayTotal > 0 ? 'GYM TIME TODAY' : 'GYM TIMER'}</Text>
             <Text style={st.timerClock}>
@@ -88,33 +94,37 @@ export default function WorkoutScreen() {
             )}
           </View>
           {activeVisit ? (
-            <Pressable onPress={() => endVisit()} style={st.timerBtn}><Text style={st.timerBtnText}>Stop</Text></Pressable>
+            <Pressable onPress={() => endVisit()} accessibilityRole="button" style={(p) => [st.timerBtn, st.timerBtnRow, smooth, hovered(p) && { backgroundColor: C.card2, borderColor: A.over }]}>
+              <Ionicons name="stop" size={14} color={A.over} /><Text style={st.timerBtnText}>Stop</Text>
+            </Pressable>
           ) : (
-            <Pressable onPress={() => startVisit(session.title)} style={[st.timerBtn, st.timerBtnOn]}><Text style={[st.timerBtnText, { color: C.inverseText }]}>Start</Text></Pressable>
+            <Pressable onPress={() => startVisit(session.title)} accessibilityRole="button" style={(p) => [st.timerBtn, st.timerBtnRow, st.timerBtnOn, smooth, hovered(p) && { backgroundColor: '#dcdcdc' }]}>
+              <Ionicons name="play" size={14} color={C.inverseText} /><Text style={[st.timerBtnText, { color: C.inverseText }]}>Start</Text>
+            </Pressable>
           )}
-        </View>
-        {session.warmup && <P muted style={{ fontSize: 14, marginTop: 8 }}>Warm-up: {session.warmup}</P>}
+        </View>}
+        {session.warmup && <P muted style={{ fontSize: 14, marginTop: 8 }}>Warm-up: {session.warmup.replace(/^Then /, 'Do ')}</P>}
 
         {warmups.length > 0 && (
           <View style={{ marginTop: 18, gap: 4 }}>
             <Row style={{ justifyContent: 'space-between' }}>
-              <Text style={st.sectionLabel}>Warm-up</Text>
+              <Row style={{ gap: 7 }}><Ionicons name="flame" size={15} color={A.cardio} /><Text style={[st.sectionLabel, { color: A.cardio }]}>Warm-up</Text></Row>
               <Text style={st.meta}>about 8 min</Text>
             </Row>
             <Text style={st.meta}>Picked for what today trains. Light and easy, nothing near failure.</Text>
             {warmups.map((it, i) => (
-              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} compact
+              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} compact
                 onRest={() => ensureTimer()} />
             ))}
           </View>
         )}
 
-        <Text style={[st.sectionLabel, { marginTop: 22 }]}>Working sets</Text>
+        <Row style={{ gap: 7, marginTop: 22 }}><Ionicons name="barbell" size={15} color={A.fat} /><Text style={[st.sectionLabel, { color: A.fat }]}>Working sets</Text></Row>
         {mainItems.map((it, i) => (
-          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
+          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
         ))}
 
-        <Button title={activeVisit ? `Finish workout · ${fmtDuration(visitSeconds(activeVisit, now))}` : 'Finish workout'} onPress={finish} style={{ marginTop: 24 }} />
+        <Button icon="flag" title={isToday && activeVisit ? `Finish workout · ${fmtDuration(visitSeconds(activeVisit, now))}` : 'Finish workout'} onPress={finish} style={{ marginTop: 24 }} />
       </Screen>
 
       {rest && (
@@ -123,8 +133,8 @@ export default function WorkoutScreen() {
             <Text style={st.restLabel}>{restLeft > 0 ? 'REST' : 'GO'}</Text>
             <Text style={st.restTime}>{restLeft > 0 ? `${Math.floor(restLeft / 60)}:${String(restLeft % 60).padStart(2, '0')}` : 'Next set'}</Text>
           </View>
-          <Pressable onPress={() => setRest((r) => (r ? { ...r, until: r.until + 30000 } : r))} style={st.restBtn}><Text style={st.restBtnText}>+30s</Text></Pressable>
-          <Pressable onPress={() => setRest(null)} style={[st.restBtn, { backgroundColor: C.inverseText }]}><Text style={[st.restBtnText, { color: C.inverse }]}>Skip</Text></Pressable>
+          <Pressable onPress={() => setRest((r) => (r ? { ...r, until: r.until + 30000 } : r))} accessibilityRole="button" style={(p) => [st.restBtn, smooth, hovered(p) && { backgroundColor: '#e2e2e2' }]}><Text style={st.restBtnText}>+30s</Text></Pressable>
+          <Pressable onPress={() => setRest(null)} accessibilityRole="button" style={(p) => [st.restBtn, smooth, { backgroundColor: C.inverseText }, hovered(p) && { backgroundColor: '#2a2a2a' }]}><Text style={[st.restBtnText, { color: C.inverse }]}>Skip</Text></Pressable>
           <View style={[st.restProgress, { width: `${rest.total ? (restLeft / rest.total) * 100 : 0}%` }]} />
         </View>
       )}
@@ -132,11 +142,11 @@ export default function WorkoutScreen() {
   );
 }
 
-function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: PlanItem; index: number; sessionTitle: string; onRest: (sec: number) => void; compact?: boolean }) {
+function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact }: { item: PlanItem; index: number; sessionTitle: string; date: string; onRest: (sec: number) => void; compact?: boolean }) {
   const router = useRouter();
   const { logs, addLog, deleteLog, updateLog } = useStore();
   const e = getExercise(item.exerciseId);
-  const today = todayISO();
+  const today = date;
   const range = parseRange(item.reps);
   const past = useMemo(() => logs.filter((l) => l.performed_on < today), [logs, today]);
   const sug = useMemo(
@@ -215,7 +225,7 @@ function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: P
 
   return (
     <View style={st.block}>
-      <Pressable onPress={() => router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+      <Pressable onPress={() => router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" accessibilityLabel={`How to do ${e.name}`} style={(p) => [{ flexDirection: 'row', gap: 14, alignItems: 'center', borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card }]}>
         <ExerciseThumb exercise={e} size={compact ? 44 : 56} />
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={[st.idx, { color: groupColor(groupOf(e)) }]}>
@@ -223,7 +233,7 @@ function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: P
           </Text>
           <Text style={[st.name, compact && { fontSize: 16 }]}>{e.name}</Text>
           <Text style={st.meta}>
-            {item.sets} × {item.reps} {METRIC_SHORT[metric]}{item.restSec ? ` · rest ${item.restSec}s` : ''} · how-to ›
+            {item.sets} × {item.reps} {METRIC_SHORT[metric]}{item.restSec ? ` · rest ${item.restSec}s` : ''} · how-to
           </Text>
         </View>
       </Pressable>
@@ -242,7 +252,7 @@ function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: P
       {range && !timed && (machineLike || unit === 'bw') && (
         <Row style={{ gap: 0, alignSelf: 'flex-start' }}>
           {(machineLike ? (['kg', 'level'] as Unit[]) : (['bw', 'kg'] as Unit[])).map((u) => (
-            <Pressable key={u} onPress={() => setUnit(u)} style={[st.seg, unit === u && st.segOn]}>
+            <Pressable key={u} onPress={() => setUnit(u)} accessibilityRole="button" accessibilityState={{ selected: unit === u }} style={(p) => [st.seg, smooth, hovered(p) && unit !== u && { backgroundColor: C.card2 }, unit === u && st.segOn]}>
               <Text style={[st.segText, unit === u && { color: C.inverseText }]}>{u === 'kg' ? 'KG' : u === 'level' ? 'PIN LEVEL' : 'BODYWEIGHT'}</Text>
             </Pressable>
           ))}
@@ -259,8 +269,10 @@ function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: P
               if (k >= 0) setRow(k, { reps: String(value) });
               setWatch(null);
             }}
-            style={[st.timerBtn2, watch && { backgroundColor: C.inverse, borderColor: C.inverse }]}
+            accessibilityRole="button"
+            style={(p) => [st.timerBtn2, st.timerBtnRow, smooth, hovered(p) && !watch && { backgroundColor: C.card2, borderColor: C.text }, watch && { backgroundColor: C.inverse, borderColor: C.inverse }]}
           >
+            <Ionicons name={watch ? 'stop' : 'timer-outline'} size={15} color={watch ? C.inverseText : C.text} />
             <Text style={[st.timerBtn2Text, watch && { color: C.inverseText }]}>
               {watch ? `Stop · ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : 'Start timer'}
             </Text>
@@ -303,13 +315,14 @@ function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: P
             ) : (
               <Text style={[st.cell, { paddingTop: 12 }, r.logId && st.cellDone]}>{item.reps}</Text>
             )}
-            <Pressable onPress={() => toggle(k)} style={[st.check, r.logId && st.checkOn]}>
-              <Text style={[st.checkText, r.logId && { color: C.inverse }]}>✓</Text>
+            <Pressable onPress={() => toggle(k)} accessibilityRole="checkbox" accessibilityState={{ checked: !!r.logId }} accessibilityLabel={`Set ${k + 1} done`} style={(p) => [st.check, smooth, hovered(p) && !r.logId && { borderColor: A.up, backgroundColor: A.up + '22' }, r.logId && st.checkOn]}>
+              <Ionicons name="checkmark" size={22} color={r.logId ? C.inverse : C.faint} />
             </Pressable>
           </View>
         ))}
-        <Pressable onPress={() => setRows((rs) => [...rs, { weight: rs[rs.length - 1]?.weight ?? '', reps: '' }])} style={{ paddingVertical: 8 }}>
-          <Text style={st.meta}>+ Add set</Text>
+        <Pressable onPress={() => setRows((rs) => [...rs, { weight: rs[rs.length - 1]?.weight ?? '', reps: '' }])} accessibilityRole="button" style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 6, borderRadius: R.sm, alignSelf: 'flex-start' }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
+          <Ionicons name="add-circle-outline" size={16} color={C.muted} />
+          <Text style={st.meta}>Add set</Text>
         </Pressable>
         {err && <Text style={{ color: C.danger, fontFamily: F.body }}>{err}</Text>}
       </View>
@@ -321,9 +334,10 @@ const st = StyleSheet.create({
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12 },
   timer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.border },
   timerLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4 },
-  timerClock: { color: C.text, fontFamily: F.display, fontSize: 34, letterSpacing: -1, fontVariant: ['tabular-nums'] },
+  timerClock: { color: C.text, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7, fontVariant: ['tabular-nums'] },
   timerBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: R.sm, borderWidth: 1, borderColor: C.borderStrong },
   timerBtn2: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: R.sm, borderWidth: 1, borderColor: C.borderStrong },
+  timerBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   timerBtn2Text: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   timerBtnOn: { backgroundColor: C.inverse, borderColor: C.inverse },
   timerBtnText: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
@@ -351,7 +365,7 @@ const st = StyleSheet.create({
   checkText: { color: C.faint, fontSize: 18, fontFamily: F.bodySemi },
   restBar: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: C.inverse, paddingHorizontal: 20, paddingTop: 14, flexDirection: 'row', alignItems: 'center', gap: 10, overflow: 'hidden' },
   restLabel: { color: '#666', fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4 },
-  restTime: { color: C.inverseText, fontFamily: F.display, fontSize: 30, letterSpacing: -1 },
+  restTime: { color: C.inverseText, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7 },
   restBtn: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: R.sm, borderWidth: 1, borderColor: C.inverseText },
   restBtnText: { color: C.inverseText, fontFamily: F.bodySemi, fontSize: 13 },
   restProgress: { position: 'absolute', left: 0, top: 0, height: 3, backgroundColor: C.inverseText },

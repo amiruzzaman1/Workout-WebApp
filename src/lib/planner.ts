@@ -31,6 +31,7 @@ export type Profile = {
   target_weight_kg?: number | null;
   calorie_override?: number | null;
   water_goal_ml?: number | null;
+  time_categories?: string[] | null; // your own time tracker categories
 };
 
 export type SplitChoice = 'auto' | 'full_body' | 'upper_lower' | 'ppl' | 'body_part';
@@ -289,7 +290,7 @@ function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude:
     title: t.title,
     type: 'strength',
     focus: t.groups,
-    warmup: 'Then 1 or 2 light sets of the first exercise before your working sets.',
+    warmup: 'Do 1 or 2 light sets of the first exercise before your working sets.',
     items: [...buildWarmup(t.groups, equipment, exclude), ...items],
   };
 }

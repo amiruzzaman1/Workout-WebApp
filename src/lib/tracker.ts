@@ -7,6 +7,14 @@ export type SleepLog = {
   note?: string | null;
 };
 
+/** One block of time on a task: when it started and when it ended. */
+export type Segment = { s: string; e: string };
+
+/**
+ * One task on one day. `minutes` is the total across every block. While the timer runs, `started_at`
+ * is when the current block began and `ended_at` is empty, and `minutes` holds what was already logged
+ * before, so continuing a task keeps counting from there.
+ */
 export type ActivityLog = {
   id: string;
   day: string;
@@ -16,6 +24,7 @@ export type ActivityLog = {
   started_at?: string | null;
   ended_at?: string | null;
   minutes: number | null;
+  segments?: Segment[] | null;
 };
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
@@ -51,6 +60,24 @@ export function sleepVerdict(min: number) {
 }
 
 export const ACTIVITY_CATEGORIES = ['Study', 'Work', 'Project', 'Admin', 'Rest', 'Other'];
+
+/** The blocks of time on a task. Older entries only have a start and an end, so those count as one block. */
+export function segmentsOf(a: ActivityLog): Segment[] {
+  if (a.segments?.length) return a.segments;
+  return a.started_at && a.ended_at ? [{ s: a.started_at, e: a.ended_at }] : [];
+}
+
+/** "14:05" in the phone's own time zone. */
+export function clockOf(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** "09:00 to 10:15, 14:30 to 15:00" */
+export function rangeText(segs: Segment[], max = 3) {
+  const shown = segs.slice(0, max).map((x) => `${clockOf(x.s)} to ${clockOf(x.e)}`).join(', ');
+  return segs.length > max ? `${shown} and ${segs.length - max} more` : shown;
+}
 
 export function nowClock() {
   const d = new Date();

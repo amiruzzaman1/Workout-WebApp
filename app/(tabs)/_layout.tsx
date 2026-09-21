@@ -1,37 +1,78 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
-import { StyleSheet, View } from 'react-native';
-import { A, C, F } from '../../src/lib/theme';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppHeader } from '../../src/components/AppHeader';
+import { hovered, smooth } from '../../src/components/ui';
+import { A, C, F, R } from '../../src/lib/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const icon = (on: IconName, off: IconName, tint: string) =>
   ({ size, focused }: { color: any; size: number; focused: boolean }) => (
-    <View style={[st.iconWrap, focused && { backgroundColor: tint + '26' }]}>
-      <Ionicons name={focused ? on : off} color={focused ? tint : C.faint} size={size - 4} />
-    </View>
+    <Ionicons name={focused ? on : off} color={focused ? tint : C.muted} size={size - 2} />
   );
 
+/**
+ * One tab as a small card with a coloured line along the top, the same look as the tiles on the Dashboard and the
+ * Progress page. Every tab has its own colour. The tab you are on is tinted in it, and hovering colours the border.
+ */
+function TabTile({ color, style, children, onPress, onLongPress, accessibilityState, accessibilityLabel, testID }: any) {
+  const focused = !!accessibilityState?.selected;
+  return (
+    <View style={[style, { padding: 3 }]}>
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        testID={testID}
+        accessibilityRole="tab"
+        accessibilityState={accessibilityState}
+        accessibilityLabel={accessibilityLabel}
+        style={(p) => [
+          t.tile, smooth,
+          { borderTopColor: focused ? color : color + '88' },
+          hovered(p) && !focused && { backgroundColor: C.card2, borderColor: color },
+          focused && { backgroundColor: color + '26', borderColor: color },
+          p.pressed && { opacity: 0.75 },
+        ]}
+      >
+        {children}
+      </Pressable>
+    </View>
+  );
+}
+
+const tab = (title: string, on: IconName, off: IconName, color: string) => ({
+  title,
+  tabBarIcon: icon(on, off, color),
+  tabBarActiveTintColor: color,
+  tabBarButton: (props: any) => <TabTile {...props} color={color} />,
+});
+
 export default function TabsLayout() {
+  // Five tabs share the width, so on a very small phone the labels get a touch smaller instead of being cut off.
+  const narrow = useWindowDimensions().width < 360;
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
-        tabBarStyle: { backgroundColor: C.bg, borderTopColor: C.border, borderTopWidth: StyleSheet.hairlineWidth, height: 68, paddingTop: 8 },
-        tabBarLabelStyle: { fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 0.2, marginTop: 2 },
+        headerShown: true,
+        header: () => <AppHeader />,
+        tabBarStyle: { backgroundColor: C.bg, borderTopColor: C.border, borderTopWidth: StyleSheet.hairlineWidth, height: 72, paddingTop: 4, paddingBottom: 4, paddingHorizontal: 4 },
+        tabBarLabelStyle: { fontFamily: F.bodySemi, fontSize: narrow ? 9 : 10, letterSpacing: narrow ? 0 : 0.2, marginTop: 1 },
         tabBarActiveTintColor: C.text,
-        tabBarInactiveTintColor: C.faint,
+        tabBarInactiveTintColor: C.muted,
         sceneStyle: { backgroundColor: C.bg },
       }}
     >
-      <Tabs.Screen name="(home)" options={{ title: 'Today', tabBarIcon: icon('today', 'today-outline', A.up), tabBarActiveTintColor: A.up }} />
-      <Tabs.Screen name="food" options={{ title: 'Food', tabBarIcon: icon('nutrition', 'nutrition-outline', A.carbs), tabBarActiveTintColor: A.carbs }} />
-      <Tabs.Screen name="progress" options={{ title: 'Progress', tabBarIcon: icon('stats-chart', 'stats-chart-outline', A.protein), tabBarActiveTintColor: A.protein }} />
-      <Tabs.Screen name="library" options={{ title: 'Exercises', tabBarIcon: icon('barbell', 'barbell-outline', A.fat), tabBarActiveTintColor: A.fat }} />
-      <Tabs.Screen name="you" options={{ title: 'You', tabBarIcon: icon('person', 'person-outline', A.water), tabBarActiveTintColor: A.water }} />
+      <Tabs.Screen name="(home)" options={tab('Dashboard', 'grid', 'grid-outline', A.up)} />
+      <Tabs.Screen name="food" options={tab('Food', 'nutrition', 'nutrition-outline', A.carbs)} />
+      <Tabs.Screen name="progress" options={tab('Progress', 'stats-chart', 'stats-chart-outline', A.protein)} />
+      <Tabs.Screen name="tracker" options={tab('Tracker', 'timer', 'timer-outline', A.core)} />
+      <Tabs.Screen name="library" options={tab('Exercises', 'barbell', 'barbell-outline', A.fat)} />
+      {/* Your profile opens from the icon in the top left, so it has no tab of its own. */}
+      <Tabs.Screen name="user" options={{ title: 'User', headerShown: false, tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
     </Tabs>
   );
 }
 
-const st = StyleSheet.create({
-  iconWrap: { width: 46, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+const t = StyleSheet.create({
+  tile: { flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderRadius: R.md, borderWidth: 1, borderColor: C.border, borderTopWidth: 2 },
 });

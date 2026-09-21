@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { ACTIVITY_CATEGORIES, ActivityLog, fmtMinutes, isTime, minutesBetween, nowClock, sleepVerdict } from '../lib/tracker';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useEffect, useMemo, useState } from 'react';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
+import { confirm } from '../lib/confirm';
+import { fmtDuration, todayISO, visitSeconds } from '../lib/progress';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
-import { Button, Chip, Input, Label, P, Row, Section } from './ui';
+import {
+  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmtMinutes, isTime, minutesBetween, nowClock, rangeText, Segment, segmentsOf, sleepVerdict,
+} from '../lib/tracker';
+import { dayLabel } from './AppHeader';
+import { AccentTile, Button, Chip, hovered, Input, Label, P, Row, Section, smooth } from './ui';
 
 export const CAT_COLORS: Record<string, string> = {
   Study: A.protein,
@@ -13,6 +20,84 @@ export const CAT_COLORS: Record<string, string> = {
   Rest: A.fibre,
   Other: '#8a8a8a',
 };
+
+// Categories you add yourself get a colour from this list, the same one every time.
+const EXTRA_COLORS = [A.core, A.cardio, '#c9b458', '#7a9ed9', '#c58bd6', '#6fc7a8'];
+
+export function catColor(name: string | null | undefined) {
+  const n = name ?? 'Other';
+  if (CAT_COLORS[n]) return CAT_COLORS[n];
+  let h = 0;
+  for (const ch of n) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return EXTRA_COLORS[h % EXTRA_COLORS.length];
+}
+
+export function fmtClock(sec: number) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const z = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${z(m)}:${z(sec % 60)}` : `${m}:${z(sec % 60)}`;
+}
+
+/**
+ * The timer that is running right now, and its total time. Only start times are saved (in the database) and
+ * the clock is worked out from them every second, so it keeps counting with the screen locked, the app closed
+ * or the computer off, and it shows up on your other devices too. It stops only when you press Stop.
+ * `seconds` includes time already logged on that task, so continuing a task keeps counting from there.
+ */
+export function useRunningTimer() {
+  const { activities, refreshActivities } = useStore();
+  const running = useMemo(
+    () => activities.filter((a) => a.started_at && !a.ended_at).sort((a, b) => (a.started_at! < b.started_at! ? 1 : -1))[0] ?? null,
+    [activities],
+  );
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!running) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [running?.id]);
+
+  // Coming back to the app: catch up the clock and pick up a timer started on another device.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { setNow(Date.now()); refreshActivities().catch(() => {}); }
+    });
+    return () => sub.remove();
+  }, [refreshActivities]);
+
+  const base = running?.minutes ?? 0;
+  const since = running?.started_at ? Math.max(0, Math.floor((now - new Date(running.started_at).getTime()) / 1000)) : 0;
+  return { running, seconds: base * 60 + since, sinceStart: since };
+}
+
+/** The built in categories, the ones you added, and any used before. */
+export function useTimeCategories() {
+  const { profile, activities, saveProfile } = useStore();
+  const custom = profile?.time_categories ?? [];
+  const categories = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const c of [...ACTIVITY_CATEGORIES, ...custom, ...activities.map((a) => a.category ?? '')]) {
+      if (!c || seen.has(c.toLowerCase())) continue;
+      seen.add(c.toLowerCase());
+      out.push(c);
+    }
+    return out;
+  }, [custom.join('|'), activities]);
+
+  /** Returns a message if the name can't be used, otherwise saves it. */
+  async function addCategory(raw: string): Promise<string | null> {
+    const name = raw.trim().replace(/\s+/g, ' ').slice(0, 24);
+    if (!name) return 'Type a name for the category.';
+    if (categories.some((c) => c.toLowerCase() === name.toLowerCase())) return 'That category already exists.';
+    await saveProfile({ time_categories: [...custom, name] } as any);
+    return null;
+  }
+  return { categories, addCategory };
+}
 
 /** Last night's sleep: bedtime, wake time, hours. */
 export function SleepCard({ date }: { date: string }) {
@@ -38,9 +123,10 @@ export function SleepCard({ date }: { date: string }) {
 
   return (
     <Section
-      title="Sleep last night"
+      title={date === todayISO() ? 'Sleep last night' : 'Sleep the night before'}
+      icon="moon" color="#8f9bff"
       right={
-        <Pressable onPress={() => setOpen((o) => !o)}>
+        <Pressable onPress={() => setOpen((o) => !o)} accessibilityRole="button" style={(p) => [st.linkBtn, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
           <Text style={st.link}>{open ? 'Close' : savedMins ? 'Edit' : 'Add'}</Text>
         </Pressable>
       }
@@ -69,118 +155,390 @@ export function SleepCard({ date }: { date: string }) {
             </View>
           </Row>
           <Row wrap style={{ gap: 6 }}>
-            <Chip label="Bed now" onPress={() => setBed(nowClock())} />
-            <Chip label="Woke now" onPress={() => setWake(nowClock())} />
+            <Chip label="Bed now" icon={() => <Ionicons name="bed-outline" size={15} color={C.muted} />} onPress={() => setBed(nowClock())} />
+            <Chip label="Woke now" icon={() => <Ionicons name="sunny-outline" size={15} color={C.muted} />} onPress={() => setWake(nowClock())} />
           </Row>
           <Text style={st.meta}>{mins ? `That is ${fmtMinutes(mins)} of sleep.` : 'Use 24 hour time, for example 23:15.'}</Text>
-          <Button small title="Save sleep" onPress={save} style={{ alignSelf: 'flex-start' }} />
+          <Button small icon="checkmark" title="Save sleep" onPress={save} style={{ alignSelf: 'flex-start' }} />
         </View>
       )}
     </Section>
   );
 }
 
-/** What you spent the day on: a running timer, or a finished block you type in. */
+export type Slice = { name: string; color: string; min: number; tasks: { title: string; min: number }[] };
+
+/** Minutes per category for a day, with the tasks inside each one. Gym time is its own slice. */
+export function useTimeSlices(date: string): Slice[] {
+  const { activities, visits } = useStore();
+  const { running, seconds } = useRunningTimer();
+  const minute = Math.floor(seconds / 60);
+  return useMemo(() => {
+    const by = new Map<string, Slice>();
+    const add = (name: string, color: string, title: string, min: number) => {
+      if (min <= 0) return;
+      const sl = by.get(name) ?? { name, color, min: 0, tasks: [] };
+      sl.min += min;
+      sl.tasks.push({ title, min });
+      by.set(name, sl);
+    };
+    for (const a of activities) if (a.day === date && a.id !== running?.id) add(a.category ?? 'Other', catColor(a.category), a.title, a.minutes ?? 0);
+    if (running && running.day === date) add(running.category ?? 'Other', catColor(running.category), running.title, minute);
+    for (const v of visits) if (v.visit_date === date) add('Workout', A.up, v.session_title || 'Gym', Math.round(visitSeconds(v) / 60));
+    const list = [...by.values()].sort((x, y) => y.min - x.min);
+    for (const sl of list) sl.tasks.sort((x, y) => y.min - x.min);
+    return list;
+  }, [activities, visits, date, running?.id, minute]);
+}
+
+type How = 'timer' | 'range' | 'minutes';
+const key = (s: string) => s.trim().toLowerCase();
+
+/**
+ * What you spent the day on. Pick a category, say what you are doing, then start a timer, add a from and to
+ * time, or type minutes. The same task on the same day keeps adding to one entry, and any entry can be continued.
+ */
 export function TimeTrackerCard({ date }: { date: string }) {
-  const { activities, addActivity, updateActivity, deleteActivity } = useStore();
-  const today = activities.filter((a) => a.day === date);
-  const running = today.find((a) => a.started_at && !a.ended_at);
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState('');
-  const [desc, setDesc] = useState('');
+  const { activities, addActivity, updateActivity, deleteActivity, visits } = useStore();
+  const { running, seconds } = useRunningTimer();
+  const { categories, addCategory } = useTimeCategories();
+  const isToday = date === todayISO();
+
   const [cat, setCat] = useState('Study');
+  const [adding, setAdding] = useState(false);
+  const [newCat, setNewCat] = useState('');
+  const [title, setTitle] = useState('');
+  const [how, setHow] = useState<How>(isToday ? 'timer' : 'range');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [mins, setMins] = useState('');
-  const [, setTick] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setTick((n) => n + 1), 30000);
-    return () => clearInterval(id);
-  }, [running]);
+  // A timer only makes sense for today. Other days are filled in with times or minutes.
+  useEffect(() => { if (!isToday && how === 'timer') setHow('range'); }, [isToday]);
 
-  const runningMins = running?.started_at ? Math.max(0, Math.round((Date.now() - new Date(running.started_at).getTime()) / 60000)) : 0;
-  const total = today.reduce((a, x) => a + (x.minutes ?? 0), 0) + (running ? runningMins : 0);
+  // Names used before in this category, newest first, for the suggestions under the box.
+  const names = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (let i = activities.length - 1; i >= 0; i--) {
+      const a = activities[i];
+      if ((a.category ?? 'Other') !== cat || !a.title) continue;
+      const k = key(a.title);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(a.title);
+    }
+    return out;
+  }, [activities, cat]);
 
-  async function start() {
-    if (!title.trim()) return;
-    await addActivity({ day: date, title: title.trim(), description: desc.trim() || null, category: cat, started_at: new Date().toISOString(), ended_at: null, minutes: null });
-    setTitle(''); setDesc(''); setOpen(false);
+  const q = key(title);
+  const suggestions = useMemo(() => {
+    if (!q) return names.slice(0, 5);
+    const hits = names.filter((n) => key(n).includes(q) && key(n) !== q);
+    return [...hits.filter((n) => key(n).startsWith(q)), ...hits.filter((n) => !key(n).startsWith(q))].slice(0, 5);
+  }, [names, q]);
+
+  // The same task, same category, same day: new time is added to it instead of starting another entry.
+  const findSame = () => (q ? activities.find((a) => a.day === date && (a.category ?? 'Other') === cat && key(a.title) === q) : undefined);
+  const same = findSame();
+
+  const dayEntries = activities.filter((a) => a.day === date && a.id !== running?.id);
+  const gym = visits.filter((v) => v.visit_date === date).sort((a, b) => (a.started_at < b.started_at ? -1 : 1));
+  const gymMins = Math.round(gym.reduce((sum, v) => sum + visitSeconds(v), 0) / 60);
+  const total = dayEntries.reduce((sum, a) => sum + (a.minutes ?? 0), 0) + (running && running.day === date ? Math.floor(seconds / 60) : 0) + gymMins;
+
+  const slices = useTimeSlices(date);
+
+  async function run(work: () => Promise<void>) {
+    setError(null);
+    setBusy(true);
+    try { await work(); } catch (e: any) { setError(e?.message ?? 'Could not save. Check your connection and try again.'); } finally { setBusy(false); }
   }
-  async function addFinished() {
-    const m = Number(mins.replace(',', '.'));
-    if (!title.trim() || !Number.isFinite(m) || m <= 0) return;
-    await addActivity({ day: date, title: title.trim(), description: desc.trim() || null, category: cat, started_at: null, ended_at: null, minutes: Math.round(m) });
-    setTitle(''); setDesc(''); setMins(''); setOpen(false);
+
+  /** Add finished time to the matching task, or make a new one. */
+  async function addTime(minutes: number, seg?: Segment) {
+    const match = findSame();
+    if (match) {
+      await updateActivity(match.id, { minutes: (match.minutes ?? 0) + minutes, segments: seg ? [...segmentsOf(match), seg] : segmentsOf(match) });
+    } else {
+      await addActivity({
+        day: date, title: title.trim(), description: null, category: cat,
+        started_at: seg?.s ?? null, ended_at: seg?.e ?? null, minutes, segments: seg ? [seg] : [],
+      });
+    }
+    setTitle(''); setFrom(''); setTo(''); setMins('');
   }
-  async function stop() {
-    if (!running) return;
-    await updateActivity(running.id, { ended_at: new Date().toISOString(), minutes: Math.max(1, runningMins) });
+
+  const startTimer = () => run(async () => {
+    if (!title.trim()) throw new Error('Type what you are doing first.');
+    const now = new Date().toISOString();
+    const match = findSame();
+    if (match) await updateActivity(match.id, { started_at: now, ended_at: null, segments: segmentsOf(match) });
+    else await addActivity({ day: date, title: title.trim(), description: null, category: cat, started_at: now, ended_at: null, minutes: null, segments: [] });
+    setTitle('');
+  });
+
+  const addRange = () => run(async () => {
+    if (!title.trim()) throw new Error('Type what you did first.');
+    if (!isTime(from) || !isTime(to)) throw new Error('Enter both times in 24 hour time, for example 14:30.');
+    const m = minutesBetween(from, to);
+    if (!m) throw new Error('The end time must be after the start time.');
+    const s = new Date(`${date}T${from.trim().padStart(5, '0')}:00`);
+    await addTime(m, { s: s.toISOString(), e: new Date(s.getTime() + m * 60000).toISOString() });
+  });
+
+  const addMinutes = () => run(async () => {
+    if (!title.trim()) throw new Error('Type what you did first.');
+    const m = Math.round(Number(mins.replace(',', '.')));
+    if (!Number.isFinite(m) || m <= 0) throw new Error('Enter the number of minutes.');
+    await addTime(m);
+  });
+
+  const stop = () => run(async () => {
+    if (!running?.started_at) return;
+    const end = new Date();
+    const elapsed = Math.round((end.getTime() - new Date(running.started_at).getTime()) / 60000);
+    await updateActivity(running.id, {
+      ended_at: end.toISOString(),
+      minutes: Math.max(1, (running.minutes ?? 0) + elapsed),
+      segments: [...(running.segments ?? []), { s: running.started_at, e: end.toISOString() }],
+    });
+  });
+
+  const continueTask = (a: ActivityLog) => run(async () => {
+    await updateActivity(a.id, { started_at: new Date().toISOString(), ended_at: null, segments: segmentsOf(a) });
+  });
+
+  async function removeEntry(a: ActivityLog) {
+    if (await confirm('Delete this entry?', `${a.title} (${fmtMinutes(a.minutes)}) will be removed.`, { confirmText: 'Delete', danger: true })) await deleteActivity(a.id);
   }
+
+  async function saveCategory() {
+    setError(null);
+    try {
+      const problem = await addCategory(newCat);
+      if (problem) return setError(problem);
+      setCat(newCat.trim().replace(/\s+/g, ' ').slice(0, 24));
+      setNewCat('');
+      setAdding(false);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save the category.');
+    }
+  }
+
+  const rangeMins = isTime(from) && isTime(to) ? minutesBetween(from, to) : null;
+  const HOW_ICON: Record<How, React.ComponentProps<typeof Ionicons>['name']> = { timer: 'timer-outline', range: 'time-outline', minutes: 'hourglass-outline' };
+  const HOWS: [How, string][] = isToday ? [['timer', 'Timer'], ['range', 'From and to'], ['minutes', 'Minutes']] : [['range', 'From and to'], ['minutes', 'Minutes']];
 
   return (
-    <Section
-      title="Time tracker"
-      right={<Text style={st.meta}>{total > 0 ? `${fmtMinutes(total)} tracked` : 'nothing yet'}</Text>}
-    >
+    <>
       {running && (
-        <Pressable onPress={stop} style={[st.running, { borderColor: CAT_COLORS[running.category ?? 'Other'] }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={st.runLabel}>RUNNING · {(running.category ?? 'Other').toUpperCase()}</Text>
-            <Text style={st.runTitle}>{running.title}</Text>
-          </View>
-          <Text style={[st.big, { fontSize: 24, color: CAT_COLORS[running.category ?? 'Other'] }]}>{fmtMinutes(runningMins)}</Text>
-          <Text style={[st.link, { marginLeft: 10 }]}>Stop</Text>
-        </Pressable>
+        <View style={[st.running, { borderColor: catColor(running.category) }]}>
+          <Text style={[st.runLabel, { color: catColor(running.category) }]}>RUNNING · {(running.category ?? 'Other').toUpperCase()}</Text>
+          <Text style={st.clock}>{fmtClock(seconds)}</Text>
+          <Text style={st.runTitle}>{running.title}</Text>
+          {(running.minutes ?? 0) > 0 && <Text style={st.meta}>Continuing from {fmtMinutes(running.minutes)} already logged.</Text>}
+          <Text style={st.meta}>It keeps running with your screen locked or the app closed, until you press Stop.</Text>
+          <Button icon="stop" title="Stop" onPress={stop} loading={busy} style={{ marginTop: 6 }} />
+        </View>
       )}
 
-      <View>
-        {today.filter((a) => a !== running).map((a) => (
-          <ActivityRow key={a.id} a={a} onDelete={() => deleteActivity(a.id)} />
-        ))}
+      <View style={st.form}>
+        <Label>Category</Label>
+        <Row wrap style={{ gap: 8 }}>
+          {categories.map((c) => <AccentTile key={c} label={c} color={catColor(c)} active={cat === c} onPress={() => setCat(c)} />)}
+          <AccentTile label="New" color={C.borderStrong} dashed icon={<Ionicons name="add" size={16} color={C.text} />} onPress={() => setAdding(true)} />
+        </Row>
+        {adding && (
+          <Row style={{ gap: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Input value={newCat} onChangeText={setNewCat} placeholder="New category, e.g. Reading" autoFocus onSubmitEditing={saveCategory} />
+            </View>
+            <Button small icon="add" title="Add" onPress={saveCategory} />
+            <Button small kind="secondary" title="Cancel" onPress={() => { setAdding(false); setNewCat(''); }} />
+          </Row>
+        )}
+
+        <Label>What are you doing?</Label>
+        <Input value={title} onChangeText={setTitle} placeholder="e.g. WorkoutApp, chapter 3, gym admin" autoCapitalize="sentences" />
+        {suggestions.length > 0 && (
+          <View>
+            <Text style={st.panelLabel}>{q ? 'Suggestions' : `Recent in ${cat}`}</Text>
+            {suggestions.map((n) => (
+              <Pressable key={n} onPress={() => setTitle(n)} style={(p) => [st.suggest, smooth, (p.pressed || hovered(p)) && { backgroundColor: C.card2 }]} accessibilityRole="button">
+                <Text style={st.suggestText} numberOfLines={1}>{n}</Text>
+                <Ionicons name="arrow-up-outline" size={14} color={C.faint} style={{ transform: [{ rotate: '-45deg' }] }} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {!!same && <Text style={st.meta}>You already have {same.title} today ({fmtMinutes(same.minutes)}). New time is added to it.</Text>}
+
+        <View style={st.seg} accessibilityRole="tablist">
+          {HOWS.map(([k, label], i) => (
+            <Pressable key={k} onPress={() => setHow(k)} accessibilityRole="tab" accessibilityState={{ selected: how === k }} style={(p) => [st.segItem, smooth, i > 0 && st.segDivider, hovered(p) && how !== k && { backgroundColor: C.card2 }, how === k && st.segOn]}>
+              <Ionicons name={HOW_ICON[k]} size={16} color={how === k ? C.inverseText : C.muted} />
+              <Text style={[st.segText, how === k && { color: C.inverseText }]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {how === 'timer' && (
+          running
+            ? <Text style={st.meta}>A timer is already running. Stop it to start another.</Text>
+            : <Button icon="play" title="Start timer" onPress={startTimer} loading={busy} />
+        )}
+
+        {how === 'range' && (
+          <View style={{ gap: 8 }}>
+            <Row style={{ gap: 10 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Label>From</Label>
+                <Input value={from} onChangeText={(t) => setFrom(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="14:00" keyboardType="numbers-and-punctuation" />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Label>To</Label>
+                <Input value={to} onChangeText={(t) => setTo(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="15:00" keyboardType="numbers-and-punctuation" />
+              </View>
+            </Row>
+            <Row wrap style={{ gap: 6 }}>
+              <Chip label="From now" icon={() => <Ionicons name="time-outline" size={15} color={C.muted} />} onPress={() => setFrom(nowClock())} />
+              <Chip label="To now" icon={() => <Ionicons name="time-outline" size={15} color={C.muted} />} onPress={() => setTo(nowClock())} />
+            </Row>
+            <Text style={st.meta}>{rangeMins ? `That is ${fmtMinutes(rangeMins)}.` : 'Use 24 hour time, for example 14:30.'}</Text>
+            <Button icon="add" title="Add time" onPress={addRange} loading={busy} />
+          </View>
+        )}
+
+        {how === 'minutes' && (
+          <View style={{ gap: 8 }}>
+            <Label>Minutes</Label>
+            <Input value={mins} onChangeText={(t) => setMins(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="60" />
+            <Button icon="add" title="Add time" onPress={addMinutes} loading={busy} />
+          </View>
+        )}
+
+        {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
       </View>
 
-      {!open ? (
-        <Button small kind="secondary" title="+ Track something" onPress={() => setOpen(true)} style={{ alignSelf: 'flex-start' }} />
-      ) : (
-        <View style={{ gap: 8 }}>
-          <Label>What are you doing?</Label>
-          <Input value={title} onChangeText={setTitle} placeholder="e.g. Dissertation, chapter 3" />
-          <Label>Notes (optional)</Label>
-          <Input value={desc} onChangeText={setDesc} placeholder="What exactly you worked on" multiline />
-          <Row wrap>
-            {ACTIVITY_CATEGORIES.map((c) => (
-              <Chip key={c} label={c} active={cat === c} dot={CAT_COLORS[c]} onPress={() => setCat(c)} />
-            ))}
-          </Row>
-          <Row style={{ gap: 10, alignItems: 'flex-end' }}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Label>Or log minutes you already did</Label>
-              <Input value={mins} onChangeText={(t) => setMins(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" placeholder="90" />
+      <TimeChart slices={slices} />
+
+      <Section title={dayLabel(date)} icon="list" color={A.core} right={<Text style={st.meta}>{total > 0 ? `${fmtMinutes(total)} tracked` : 'nothing yet'}</Text>}>
+        <View>
+          {dayEntries.map((a) => (
+            <ActivityRow
+              key={a.id}
+              a={a}
+              onContinue={isToday && !running ? () => continueTask(a) : undefined}
+              onDelete={() => removeEntry(a)}
+            />
+          ))}
+          {gym.map((v) => (
+            <View key={v.id} style={[st.row, { borderTopColor: A.up }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={st.rowTitle} numberOfLines={1}>{v.session_title || 'Workout'}</Text>
+                <Text style={st.meta}>Gym · {clockOf(v.started_at)} to {v.ended_at ? clockOf(v.ended_at) : 'now'}</Text>
+              </View>
+              <Text style={[st.rowTime, { color: A.up }]}>{fmtDuration(visitSeconds(v))}</Text>
             </View>
-            <Button small kind="secondary" title="Add" onPress={addFinished} />
-          </Row>
-          <Row>
-            <Button small title="Start timer" onPress={start} />
-            <Button small kind="secondary" title="Cancel" onPress={() => setOpen(false)} />
-          </Row>
+          ))}
+          {dayEntries.length === 0 && gym.length === 0 && <P muted style={{ fontSize: 13 }}>Nothing tracked for this day yet.</P>}
         </View>
-      )}
-    </Section>
+      </Section>
+    </>
   );
 }
 
-function ActivityRow({ a, onDelete }: { a: ActivityLog; onDelete: () => void }) {
-  const col = CAT_COLORS[a.category ?? 'Other'];
+/**
+ * A donut of your 24 hours. The whole ring is the day, each coloured slice is time you tracked, and what is left
+ * of the ring is untracked time. Under it, each category with the tasks done in it.
+ */
+export function TimeChart({ slices }: { slices: Slice[] }) {
+  const total = slices.reduce((a, x) => a + x.min, 0);
+  if (total <= 0) return null;
+  const DAY = 24 * 60;
+  const size = 148;
+  const stroke = 24;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const scale = Math.max(1, total / DAY); // more than 24 hours only if entries overlap
+  const gap = slices.length > 1 ? 2 : 0;
+  const left = Math.max(0, DAY - total);
+  let acc = 0;
   return (
-    <View style={st.row}>
-      <View style={[st.bar, { backgroundColor: col }]} />
+    <View style={st.chart}>
+      <Text style={st.chartTitle}>Your 24 hours</Text>
+      <View style={st.chartBody}>
+        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+          <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+            <Circle cx={size / 2} cy={size / 2} r={r} stroke="#262626" strokeWidth={stroke} fill="none" />
+            {slices.map((x) => {
+              const len = (x.min / (DAY * scale)) * circ;
+              const seg = (
+                <Circle
+                  key={x.name}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={r}
+                  stroke={x.color}
+                  strokeWidth={stroke}
+                  fill="none"
+                  strokeDasharray={`${Math.max(len - gap, 1)} ${circ}`}
+                  strokeDashoffset={-acc}
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                />
+              );
+              acc += len;
+              return seg;
+            })}
+          </Svg>
+          <Text style={st.chartBig}>{fmtMinutes(total)}</Text>
+          <Text style={st.meta}>of 24h</Text>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 150, gap: 12 }}>
+          {slices.map((x) => (
+            <View key={x.name} style={{ gap: 2 }}>
+              <View style={st.legendRow}>
+                <View style={[st.legendDot, { backgroundColor: x.color }]} />
+                <Text style={st.legendName} numberOfLines={1}>{x.name}</Text>
+                <Text style={st.legendTime}>{fmtMinutes(x.min)} · {Math.round((x.min / DAY) * 100)}%</Text>
+              </View>
+              <Text style={st.meta} numberOfLines={2}>
+                {x.tasks.slice(0, 3).map((t) => `${t.title} ${fmtMinutes(t.min)}`).join(', ')}{x.tasks.length > 3 ? ` and ${x.tasks.length - 3} more` : ''}
+              </Text>
+            </View>
+          ))}
+          <View style={st.legendRow}>
+            <View style={[st.legendDot, { backgroundColor: '#262626' }]} />
+            <Text style={[st.legendName, { color: C.muted, fontFamily: F.body }]}>Untracked</Text>
+            <Text style={[st.legendTime, { color: C.muted }]}>{fmtMinutes(left)}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ActivityRow({ a, onContinue, onDelete }: { a: ActivityLog; onContinue?: () => void; onDelete: () => void }) {
+  const col = catColor(a.category);
+  const ranges = rangeText(segmentsOf(a));
+  return (
+    <View style={[st.row, { borderTopColor: col }]}>
       <View style={{ flex: 1 }}>
         <Text style={st.rowTitle} numberOfLines={1}>{a.title}</Text>
-        {!!a.description && <Text style={st.meta} numberOfLines={2}>{a.description}</Text>}
+        <Text style={st.meta} numberOfLines={2}>{a.category ?? 'Other'}{ranges ? ` · ${ranges}` : ''}</Text>
       </View>
       <Text style={[st.rowTime, { color: col }]}>{fmtMinutes(a.minutes)}</Text>
-      <Pressable onPress={onDelete} hitSlop={8} style={{ paddingHorizontal: 6 }}>
-        <Text style={{ color: C.faint, fontSize: 15 }}>✕</Text>
+      {onContinue && (
+        <Pressable onPress={onContinue} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Continue ${a.title}`} style={(p) => [{ padding: 3, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: col + '22' }]}>
+          <Ionicons name="play-circle-outline" size={24} color={col} />
+        </Pressable>
+      )}
+      <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${a.title}`} style={(p) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: A.over + '22' }]}>
+        {(p: any) => <Ionicons name="trash-outline" size={16} color={hovered(p) ? A.over : C.faint} />}
       </Pressable>
     </View>
   );
@@ -188,14 +546,32 @@ function ActivityRow({ a, onDelete }: { a: ActivityLog; onDelete: () => void }) 
 
 const st = StyleSheet.create({
   link: { color: C.text, fontFamily: F.bodySemi, fontSize: 12, textDecorationLine: 'underline' },
+  linkBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: R.sm },
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 18 },
-  big: { color: C.text, fontFamily: F.display, fontSize: 30, letterSpacing: -1 },
+  big: { color: C.text, fontFamily: F.display, fontSize: 22, letterSpacing: -0.6 },
   badge: { fontFamily: F.bodySemi, fontSize: 11, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
-  running: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: R.md, padding: 12, gap: 8 },
+  running: { borderWidth: 1, borderRadius: R.lg, padding: 18, gap: 6, backgroundColor: C.card },
+  clock: { color: C.inverse, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7, lineHeight: 30 },
   runLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.2 },
   runTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 15 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
-  bar: { width: 3, alignSelf: 'stretch', borderRadius: 2 },
+  form: { backgroundColor: C.card, borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.lg, padding: 16, gap: 10 },
+  panelLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2 },
+  suggest: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  suggestText: { flex: 1, color: C.text, fontFamily: F.bodyMed, fontSize: 15 },
+  seg: { flexDirection: 'row', borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, overflow: 'hidden', marginTop: 4 },
+  segItem: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 3 },
+  segDivider: { borderLeftWidth: 1, borderLeftColor: C.borderStrong },
+  segOn: { backgroundColor: C.inverse },
+  segText: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
+  chart: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: R.lg, padding: 16, gap: 14 },
+  chartTitle: { color: C.muted, fontFamily: F.bodySemi, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase' },
+  chartBody: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 20 },
+  chartBig: { color: C.inverse, fontFamily: F.display, fontSize: 20, letterSpacing: -0.6 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendDot: { width: 10, height: 10, borderRadius: 3 },
+  legendName: { flex: 1, color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
+  legendTime: { color: C.text, fontFamily: F.bodyMed, fontSize: 13 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.border, borderTopWidth: 2 },
   rowTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   rowTime: { fontFamily: F.displayMed, fontSize: 14 },
 });

@@ -35,7 +35,7 @@ export function Ring({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <Text style={[st.value, big ? { fontSize: 26 } : null]} numberOfLines={1}>{big ?? Math.round(value)}</Text>
+      <Text style={[st.value, big ? { fontSize: 24 } : null]} numberOfLines={1}>{big ?? Math.round(value)}</Text>
       {!!sub && <Text style={st.sub}>{sub}</Text>}
       {!!label && <Text style={st.label}>{label}</Text>}
     </View>
