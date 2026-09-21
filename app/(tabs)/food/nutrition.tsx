@@ -1,11 +1,11 @@
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, Chip, Eyebrow, H1, Label, P, Row, Screen, Section, Slider } from '../src/components/ui';
-import { DobInput, NumberField, WorkFields } from '../src/components/BodyFields';
-import { ageFrom, cmToFtIn, computeTargets, ftInToCm } from '../src/lib/nutrition';
-import { DEFAULT_PROFILE, useStore } from '../src/lib/store';
-import { A, C, F, R } from '../src/lib/theme';
+import { Button, Chip, Eyebrow, H1, Label, P, Row, Screen, Section, Slider } from '../../../src/components/ui';
+import { DobInput, NumberField, WorkFields } from '../../../src/components/BodyFields';
+import { ageFrom, cmToFtIn, computeTargets, ftInToCm } from '../../../src/lib/nutrition';
+import { DEFAULT_PROFILE, useStore } from '../../../src/lib/store';
+import { A, C, F, R } from '../../../src/lib/theme';
 
 export default function Nutrition() {
   const { profile, saveProfile } = useStore();
@@ -212,7 +212,7 @@ export default function Nutrition() {
                   </View>
                 ))}
               </View>
-              <Button kind="secondary" small title="Change my goal" onPress={() => router.push('/onboarding')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+              <Button kind="secondary" small title="Change my goal" onPress={() => router.push('/you/onboarding')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
             </Section>
           )}
 

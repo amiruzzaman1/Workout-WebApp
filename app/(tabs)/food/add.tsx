@@ -1,13 +1,13 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { BarcodeScanner } from '../../src/components/BarcodeScanner';
-import { Button, Chip, Eyebrow, H1, Input, Label, P, Row, Screen } from '../../src/components/ui';
-import { Food, MEAL_LABELS, Meal, round, scaleFood } from '../../src/lib/nutrition';
-import { lookupBarcode, searchFoods } from '../../src/lib/off';
-import { todayISO } from '../../src/lib/progress';
-import { useStore } from '../../src/lib/store';
-import { C, F, R } from '../../src/lib/theme';
+import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
+import { Button, Chip, Eyebrow, H1, Input, Label, P, Row, Screen } from '../../../src/components/ui';
+import { computeTargets, Food, MEAL_LABELS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
+import { lookupBarcode, searchFoods } from '../../../src/lib/off';
+import { todayISO } from '../../../src/lib/progress';
+import { useStore } from '../../../src/lib/store';
+import { A, C, F, R } from '../../../src/lib/theme';
 
 type Mode = 'scan' | 'search' | 'mine' | 'quick';
 
@@ -216,6 +216,8 @@ function QuickAdd({ onDone }: { onDone: (f: Food) => void }) {
 function Portion({
   food, meal, date, initialAmount, onBack, onSave,
 }: { food: Food; meal: Meal; date: string; initialAmount?: number; onBack: () => void; onSave: (e: any) => Promise<void> }) {
+  const { profile } = useStore();
+  const t = computeTargets(profile as any);
   const serving = food.serving_g && food.serving_g > 0 ? food.serving_g : null;
   const [amount, setAmount] = useState(String(initialAmount ?? serving ?? 100));
   const [busy, setBusy] = useState(false);
@@ -255,6 +257,16 @@ function Portion({
         </Row>
       </View>
 
+      {t.ready && (
+        <View style={{ marginTop: 18, gap: 10 }}>
+          <Text style={st.macroLabel}>Percent of today's targets</Text>
+          <GoalBar label="Calories" value={m.kcal} target={t.kcal!} color={C.inverse} unit="kcal" />
+          <GoalBar label="Protein" value={m.protein_g} target={t.protein!} color={A.protein} unit="g" />
+          <GoalBar label="Carbs" value={m.carbs_g} target={t.carbs!} color={A.carbs} unit="g" />
+          <GoalBar label="Fat" value={m.fat_g} target={t.fat!} color={A.fat} unit="g" />
+        </View>
+      )}
+
       <Button
         title={`Add to ${MEAL_LABELS[meal]}`}
         loading={busy}
@@ -272,6 +284,23 @@ function Portion({
       />
       <Button kind="secondary" title="Back" onPress={onBack} />
     </Screen>
+  );
+}
+
+function GoalBar({ label, value, target, color, unit }: { label: string; value: number; target: number; color: string; unit: string }) {
+  const pct = target > 0 ? Math.min(1, value / target) : 0;
+  return (
+    <View style={{ gap: 5 }}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Text style={{ color: C.text, fontFamily: F.body, fontSize: 13 }}>{label}</Text>
+        <Text style={{ color: C.muted, fontFamily: F.bodyMed, fontSize: 12 }}>
+          {Math.round(value)} {unit} · {Math.round(pct * 100)}% of {Math.round(target)}
+        </Text>
+      </Row>
+      <View style={{ height: 4, backgroundColor: C.card2, borderRadius: 2, overflow: 'hidden' }}>
+        <View style={{ height: 4, width: `${pct * 100}%`, backgroundColor: color }} />
+      </View>
+    </View>
   );
 }
 

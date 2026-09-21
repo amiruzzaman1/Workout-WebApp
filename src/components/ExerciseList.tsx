@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { allExercises, Exercise, isAvailable, MUSCLE_GROUPS, titleCase } from '../lib/exercises';
+import { allExercises, Exercise, groupOf, isAvailable, MUSCLE_GROUPS, titleCase } from '../lib/exercises';
 import { useStore } from '../lib/store';
-import { C } from '../lib/theme';
+import { C, GROUP_COLORS } from '../lib/theme';
 import { ExerciseThumb } from './ExerciseAnimation';
 import { Chip, Input, ListRow, Row } from './ui';
 import { F } from '../lib/theme';
@@ -47,7 +47,7 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
           <Row wrap>
             <Chip label="All" active={!group} onPress={() => setGroup(null)} />
             {Object.keys(MUSCLE_GROUPS).map((g) => (
-              <Chip key={g} label={g} active={group === g} onPress={() => setGroup(group === g ? null : g)} />
+              <Chip key={g} label={g} active={group === g} onPress={() => setGroup(group === g ? null : g)} dot={GROUP_COLORS[g]} />
             ))}
           </Row>
           <Row wrap>
@@ -60,6 +60,7 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
       }
       renderItem={({ item }) => (
         <ListRow
+          accent={GROUP_COLORS[groupOf(item)]}
           onPress={() => onPick(item)}
           left={<ExerciseThumb exercise={item} />}
           title={item.name}

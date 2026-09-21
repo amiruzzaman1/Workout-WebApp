@@ -79,9 +79,10 @@ export function Button({
   );
 }
 
-export function Chip({ label, active, onPress }: { label: string; active?: boolean; onPress?: () => void }) {
+export function Chip({ label, active, onPress, dot }: { label: string; active?: boolean; onPress?: () => void; dot?: string }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.chip, active && s.chipActive, pressed && { opacity: 0.7 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [s.chip, active && s.chipActive, active && !!dot && { backgroundColor: dot, borderColor: dot }, pressed && { opacity: 0.7 }]}>
+      {!!dot && !active && <View style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: dot, marginRight: 7 }} />}
       <Text style={[s.chipText, active && { color: C.inverseText }]}>{label}</Text>
     </Pressable>
   );
@@ -109,10 +110,11 @@ export function Stat({ value, label, color }: { value: string | number; label: s
 }
 
 export function ListRow({
-  left, title, subtitle, right, onPress,
-}: { left?: React.ReactNode; title: string; subtitle?: string; right?: React.ReactNode; onPress?: () => void }) {
+  left, title, subtitle, right, onPress, accent,
+}: { left?: React.ReactNode; title: string; subtitle?: string; right?: React.ReactNode; onPress?: () => void; accent?: string }) {
   return (
     <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [s.listRow, pressed && onPress && { backgroundColor: C.card2 }]}>
+      {!!accent && <View style={[s.accentBar, { backgroundColor: accent }]} />}
       {left}
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.rowTitle} numberOfLines={2}>{title}</Text>
@@ -208,7 +210,7 @@ export const s = StyleSheet.create({
   btn: { paddingVertical: 15, paddingHorizontal: 20, borderRadius: R.sm, alignItems: 'center', justifyContent: 'center' },
   btnSmall: { paddingVertical: 8, paddingHorizontal: 12 },
   btnText: { fontFamily: F.bodySemi, fontSize: 15, letterSpacing: 0.2 },
-  chip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: C.border },
+  chip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: C.border },
   chipActive: { backgroundColor: C.inverse, borderColor: C.inverse },
   chipText: { color: C.text, fontFamily: F.bodyMed, fontSize: 13 },
   input: { minWidth: 0, width: '100%', backgroundColor: C.card, color: C.text, borderWidth: 1, borderColor: C.border, borderRadius: R.sm, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, fontFamily: F.body },
@@ -223,6 +225,7 @@ export const s = StyleSheet.create({
   stepText: { color: C.text, fontFamily: F.bodySemi, fontSize: 18 },
   stepValue: { minWidth: 72, height: 44, alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderBottomWidth: 1, borderColor: C.borderStrong, paddingHorizontal: 8 },
   stepValueText: { color: C.text, fontFamily: F.displayMed, fontSize: 16 },
+  accentBar: { width: 3, alignSelf: 'stretch', borderRadius: 2, marginRight: -4 },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
   rowTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 15 },
   rowSub: { color: C.muted, fontFamily: F.body, fontSize: 13 },

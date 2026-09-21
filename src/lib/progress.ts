@@ -7,6 +7,7 @@
 import { Exercise, getExercise } from './exercises';
 
 export type Unit = 'kg' | 'level' | 'bw';
+export type Metric = 'reps' | 'seconds' | 'minutes';
 
 export type LogRow = {
   id: string;
@@ -18,6 +19,7 @@ export type LogRow = {
   unit: Unit;
   session_title?: string | null;
   target_reps?: string | null;
+  metric?: Metric;
   created_at?: string;
 };
 
@@ -104,13 +106,45 @@ function prevStep(w: number, unit: Unit, e: Exercise | undefined): number {
   return Math.max(0, Math.round(target / step) * step);
 }
 
-export function suggest(logs: LogRow[], exerciseId: string, targetReps: string, targetSets: number): Suggestion {
+export function suggest(
+  logs: LogRow[], exerciseId: string, targetReps: string, targetSets: number, metric: Metric = 'reps',
+): Suggestion {
   const e = getExercise(exerciseId);
   const unit = defaultUnit(e);
   const range = parseRange(targetReps);
   const sessions = sessionsFor(logs, exerciseId);
   if (!range) return { kind: 'none', unit, headline: '', detail: '' };
   const [lo, hi] = range;
+
+  // Timed work progresses by holding longer, not by adding weight.
+  if (metric === 'seconds' || metric === 'minutes') {
+    const word = metric === 'seconds' ? 's' : ' min';
+    const step = metric === 'seconds' ? 15 : 5;
+    if (sessions.length === 0) {
+      return {
+        kind: 'first', unit,
+        headline: metric === 'seconds' ? `Hold for ${lo} to ${hi}${word}` : `Aim for ${hi}${word}`,
+        detail: metric === 'seconds'
+          ? 'Stop the set when your form goes, not when the timer says so. Use the timer button to count it.'
+          : 'Steady pace, one where you could still talk in short sentences.',
+      };
+    }
+    const last = sessions[0];
+    const best = Math.max(...last.sets.map((x) => x.reps));
+    const listed = last.sets.map((x) => `${x.reps}${word}`).join(', ');
+    const allTop = last.sets.length >= targetSets && last.sets.every((x) => x.reps >= hi);
+    return allTop
+      ? {
+          kind: 'increase', unit,
+          headline: `Go up to ${hi + step}${word}`,
+          detail: `You hit ${hi}${word} on every set last time (${listed}). Raise the target by ${step}${word} and build back up.`,
+        }
+      : {
+          kind: 'hold', unit,
+          headline: `Beat ${best}${word}`,
+          detail: `Last time: ${listed}. Add a little to each set. Once every set reaches ${hi}${word}, the target goes up.`,
+        };
+  }
 
   if (sessions.length === 0) {
     return {

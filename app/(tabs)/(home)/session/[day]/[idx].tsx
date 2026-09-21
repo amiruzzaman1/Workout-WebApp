@@ -1,14 +1,14 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
-import { ExerciseThumb } from '../../../src/components/ExerciseAnimation';
-import { ExerciseList } from '../../../src/components/ExerciseList';
-import { Button, Card, Input, Label, P, Row, Screen } from '../../../src/components/ui';
-import { confirm } from '../../../src/lib/confirm';
-import { Exercise, getExercise, titleCase } from '../../../src/lib/exercises';
-import { alternativesFor, DAY_NAMES, PlanData, PlanItem, PlanSession, uid } from '../../../src/lib/planner';
-import { useStore } from '../../../src/lib/store';
-import { C, F } from '../../../src/lib/theme';
+import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
+import { ExerciseList } from '../../../../../src/components/ExerciseList';
+import { Button, Card, Chip, Input, Label, P, Row, Screen } from '../../../../../src/components/ui';
+import { confirm } from '../../../../../src/lib/confirm';
+import { Exercise, getExercise, titleCase } from '../../../../../src/lib/exercises';
+import { alternativesFor, DAY_NAMES, METRIC_LABELS, Metric, metricFor, PlanData, PlanItem, PlanSession, uid } from '../../../../../src/lib/planner';
+import { useStore } from '../../../../../src/lib/store';
+import { C, F } from '../../../../../src/lib/theme';
 
 export default function SessionEditor() {
   const params = useLocalSearchParams<{ day: string; idx: string }>();
@@ -51,9 +51,16 @@ export default function SessionEditor() {
   function onPicked(e: Exercise) {
     if (!picker) return;
     if (picker.mode === 'add') {
-      commit({ ...draft!, items: [...draft!.items, { uid: uid(), exerciseId: e.id, sets: 3, reps: '10-12', restSec: 75 }] });
+      const m = metricFor(e.id);
+      commit({
+        ...draft!,
+        items: [...draft!.items, {
+          uid: uid(), exerciseId: e.id, metric: m, sets: m === 'minutes' ? 1 : 3,
+          reps: m === 'reps' ? '10-12' : m === 'seconds' ? '30-45' : '20', restSec: m === 'reps' ? 75 : 45,
+        }],
+      });
     } else {
-      updateItem(picker.uid, { exerciseId: e.id });
+      updateItem(picker.uid, { exerciseId: e.id, metric: metricFor(e.id) });
     }
     setPicker(null);
     setSwapOpen(null);
@@ -83,7 +90,7 @@ export default function SessionEditor() {
           const alts = swapOpen === it.uid ? alternativesFor(it, equipment) : [];
           return (
             <Card key={it.uid}>
-              <Pressable onPress={() => e && router.push(`/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+              <Pressable onPress={() => e && router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
                 {e && <ExerciseThumb exercise={e} />}
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId} ›</Text>
@@ -99,7 +106,7 @@ export default function SessionEditor() {
                     onBlur={() => commit(draft)} />
                 </View>
                 <View style={{ flex: 2, minWidth: 0 }}>
-                  <Label>Reps / time</Label>
+                  <Label>{METRIC_LABELS[it.metric ?? metricFor(it.exerciseId)]}</Label>
                   <Input value={it.reps} onChangeText={(t) => updateItem(it.uid, { reps: t }, false)} onBlur={() => commit(draft)} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -108,6 +115,17 @@ export default function SessionEditor() {
                     onChangeText={(t) => updateItem(it.uid, { restSec: Number(t.replace(/\D/g, '')) || 0 }, false)}
                     onBlur={() => commit(draft)} />
                 </View>
+              </Row>
+              <Row wrap style={{ marginTop: 4 }}>
+                <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 12, marginRight: 4 }}>Measured in</Text>
+                {(['reps', 'seconds', 'minutes'] as Metric[]).map((m) => (
+                  <Chip
+                    key={m}
+                    label={METRIC_LABELS[m]}
+                    active={(it.metric ?? metricFor(it.exerciseId)) === m}
+                    onPress={() => updateItem(it.uid, { metric: m, reps: m === 'reps' ? '10-12' : m === 'seconds' ? '30-45' : '20' })}
+                  />
+                ))}
               </Row>
               {it.note && <P muted style={{ fontSize: 13 }}>{it.note}</P>}
 

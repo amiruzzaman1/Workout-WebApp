@@ -1,11 +1,11 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Switch, Text, View } from 'react-native';
-import { ExerciseAnimation, ExerciseThumb } from '../../src/components/ExerciseAnimation';
-import { Bullets, Eyebrow, H1, ListRow, P, Row, Screen, Section } from '../../src/components/ui';
-import { MACHINE_BY_KEY } from '../../src/data/machines';
-import { getExercise, titleCase } from '../../src/lib/exercises';
-import { useStore } from '../../src/lib/store';
-import { C, F } from '../../src/lib/theme';
+import { ExerciseAnimation, ExerciseThumb } from '../../../../src/components/ExerciseAnimation';
+import { Bullets, Eyebrow, H1, ListRow, P, Row, Screen, Section } from '../../../../src/components/ui';
+import { MACHINE_BY_KEY } from '../../../../src/data/machines';
+import { getExercise, titleCase } from '../../../../src/lib/exercises';
+import { useStore } from '../../../../src/lib/store';
+import { C, F } from '../../../../src/lib/theme';
 
 export default function MachineDetail() {
   const { key } = useLocalSearchParams<{ key: string }>();
@@ -45,7 +45,7 @@ export default function MachineDetail() {
         <Section title="Exercises on this machine">
           <View>
             {exs.map((e) => (
-              <ListRow key={e.id} onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)} left={<ExerciseThumb exercise={e} />}
+              <ListRow key={e.id} onPress={() => router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} left={<ExerciseThumb exercise={e} />}
                 title={e.name} subtitle={e.primary.map(titleCase).join(', ')} right={<Text style={{ color: C.faint, fontSize: 18 }}>›</Text>} />
             ))}
           </View>

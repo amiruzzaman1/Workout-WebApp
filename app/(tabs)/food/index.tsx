@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Eyebrow, H1, P, Row, Screen, Section } from '../../src/components/ui';
-import { computeTargets, FoodEntry, MEAL_LABELS, MEALS, round, totals } from '../../src/lib/nutrition';
-import { todayISO } from '../../src/lib/progress';
-import { useStore } from '../../src/lib/store';
-import { A, C, F, R } from '../../src/lib/theme';
+import { Button, Card, Eyebrow, H1, P, Row, Screen, Section } from '../../../src/components/ui';
+import { computeTargets, FoodEntry, MEAL_LABELS, MEALS, round, totals } from '../../../src/lib/nutrition';
+import { todayISO } from '../../../src/lib/progress';
+import { useStore } from '../../../src/lib/store';
+import { A, C, F, R } from '../../../src/lib/theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const GLASS = 250;
@@ -68,7 +68,7 @@ export default function FoodScreen() {
           <Card>
             <P style={{ fontFamily: F.bodySemi }}>Set up your targets</P>
             <P muted style={{ fontSize: 14 }}>Add your height, weight, age and how active your work is, and the app works out your calories, protein, carbs, fat and water for the day.</P>
-            <Button small title="Add my details" onPress={() => router.push('/nutrition')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+            <Button small title="Add my details" onPress={() => router.push('/food/nutrition')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
           </Card>
         </>
       )}
@@ -94,6 +94,16 @@ export default function FoodScreen() {
         const mt = totals(items);
         return (
           <Section key={meal} title={MEAL_LABELS[meal]} right={<Text style={st.meta}>{Math.round(mt.kcal)} kcal</Text>}>
+            {items.length > 0 && (
+              <Row wrap style={{ gap: 8, marginBottom: 2 }}>
+                <Text style={st.summary} numberOfLines={1}>
+                  {items[0].name}{items.length > 1 ? ` and ${items.length - 1} more` : ''}
+                </Text>
+                <Text style={[st.pct, { color: A.protein }]}>P {pctOf(mt.protein * 4, mt.kcal)}%</Text>
+                <Text style={[st.pct, { color: A.carbs }]}>C {pctOf(mt.carbs * 4, mt.kcal)}%</Text>
+                <Text style={[st.pct, { color: A.fat }]}>F {pctOf(mt.fat * 9, mt.kcal)}%</Text>
+              </Row>
+            )}
             <View>
               {items.map((e) => (
                 <EntryRow key={e.id} e={e} onDelete={() => deleteFoodEntry(e.id)} onPress={() => router.push(`/food/add?meal=${meal}&date=${date}&edit=${e.id}`)} />
@@ -104,10 +114,14 @@ export default function FoodScreen() {
         );
       })}
 
-      <Button kind="secondary" title="Your targets & body stats" onPress={() => router.push('/nutrition')} style={{ marginTop: 24 }} />
+      <Button kind="secondary" title="Your targets & body stats" onPress={() => router.push('/food/nutrition')} style={{ marginTop: 24 }} />
       <P muted style={{ fontSize: 12 }}>Food data from Open Food Facts, an open database. Numbers are estimates, so check the label if something looks off.</P>
     </Screen>
   );
+}
+
+function pctOf(part: number, whole: number) {
+  return whole > 0 ? Math.round((part / whole) * 100) : 0;
 }
 
 function EntryRow({ e, onPress, onDelete }: { e: FoodEntry; onPress: () => void; onDelete: () => void }) {
@@ -179,4 +193,6 @@ const st = StyleSheet.create({
   kcal: { color: C.text, fontFamily: F.displayMed, fontSize: 15 },
   glass: { width: 26, height: 34, borderRadius: 4, borderWidth: 1, borderColor: C.borderStrong },
   dot: { width: 8, height: 8, borderRadius: 2 },
+  summary: { flex: 1, minWidth: 120, color: C.muted, fontFamily: F.body, fontSize: 12 },
+  pct: { fontFamily: F.bodySemi, fontSize: 11 },
 });

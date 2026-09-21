@@ -35,15 +35,41 @@ export type Profile = {
 
 export type SplitChoice = 'auto' | 'full_body' | 'upper_lower' | 'ppl' | 'body_part';
 
+export type Metric = 'reps' | 'seconds' | 'minutes';
+
 export type PlanItem = {
   uid: string;
   exerciseId: string;
   slot?: string;
+  /** 'warmup' items come first and are quick; 'main' is the working part. */
+  phase?: 'warmup' | 'main';
   sets: number;
+  /** The target: reps, seconds held, or minutes, depending on `metric`. */
   reps: string;
+  metric?: Metric;
   restSec: number;
   note?: string;
 };
+
+/** Exercises that are a hold, so they're timed rather than counted. */
+export const TIMED_HOLDS = new Set([
+  'Plank', 'Side_Bridge', 'Side_Bridge_-_Oblique', 'Stomach_Vacuum', 'Superman', 'Isometric_Wipers',
+  'Isometric_Neck_Exercise_-_Front_And_Back', 'Isometric_Neck_Exercise_-_Sides', 'Standing_Towel_Triceps_Extension',
+  'One_Handed_Hang', 'Butt_Lift_Bridge', 'Pallof_Press_With_Rotation',
+]);
+
+/** How an exercise should be measured, unless the plan says otherwise. */
+export function metricFor(exerciseId: string): Metric {
+  const e = getExercise(exerciseId);
+  if (!e) return 'reps';
+  if (e.category === 'cardio') return 'minutes';
+  if (e.category === 'stretching') return 'seconds';
+  if (TIMED_HOLDS.has(exerciseId)) return 'seconds';
+  return 'reps';
+}
+
+export const METRIC_LABELS: Record<Metric, string> = { reps: 'Reps', seconds: 'Seconds', minutes: 'Minutes' };
+export const METRIC_SHORT: Record<Metric, string> = { reps: 'reps', seconds: 's', minutes: 'min' };
 
 export type PlanSession = {
   id: string;
@@ -105,6 +131,21 @@ export const SLOTS: Record<string, string[]> = {
 
 const ISOLATION = new Set(['lateral', 'rear_delt', 'biceps', 'biceps2', 'triceps', 'triceps2', 'calves', 'chest_fly', 'leg_ext', 'leg_curl', 'glutes', 'back_iso']);
 const CORE = new Set(['core', 'core2']);
+
+/** Warm-up drills, picked to match what the session trains. */
+const WARMUP_BY_GROUP: Record<string, string[]> = {
+  chest: ['Dynamic_Chest_Stretch', 'Arm_Circles', 'Chest_And_Front_Of_Shoulder_Stretch'],
+  shoulders: ['Arm_Circles', 'Shoulder_Circles', 'Round_The_World_Shoulder_Stretch'],
+  triceps: ['Elbow_Circles', 'Triceps_Stretch', 'Overhead_Stretch'],
+  biceps: ['Elbow_Circles', 'Standing_Biceps_Stretch', 'Wrist_Circles'],
+  back: ['Dynamic_Back_Stretch', 'Cat_Stretch', 'Middle_Back_Stretch'],
+  quads: ['Bodyweight_Squat', 'Standing_Hip_Circles', 'Kneeling_Hip_Flexor'],
+  hamstrings: ['Standing_Hip_Circles', 'Leg-Up_Hamstring_Stretch', 'Toe_Touchers'],
+  glutes: ['Butt_Lift_Bridge', 'Standing_Hip_Circles', 'Knee_Across_The_Body'],
+  calves: ['Ankle_Circles', 'Standing_Gastrocnemius_Calf_Stretch'],
+  core: ['Cat_Stretch', 'Dead_Bug'],
+};
+const WARMUP_GENERAL = ['Arm_Circles', 'Cat_Stretch', 'Standing_Hip_Circles'];
 
 const STRETCHES = ['Childs_Pose', 'Kneeling_Hip_Flexor', 'Hamstring_Stretch', 'Chest_And_Front_Of_Shoulder_Stretch', 'Cat_Stretch', 'Standing_Hip_Circles', 'Upper_Back_Stretch'];
 
@@ -175,25 +216,64 @@ function pickFromSlot(slot: string, equipment: Set<string>, used: Set<string>, e
   return null;
 }
 
-function prescription(p: Profile, slot: string): { sets: number; reps: string; restSec: number } {
+function prescription(p: Profile, slot: string, exerciseId: string): { sets: number; reps: string; restSec: number; metric: Metric } {
   const beginner = p.experience === 'beginner';
-  if (CORE.has(slot)) return { sets: beginner ? 2 : 3, reps: '10-15 (or 30s hold)', restSec: 45 };
+  const metric = metricFor(exerciseId);
+  if (metric === 'seconds') return { sets: beginner ? 2 : 3, reps: '30-45', restSec: 45, metric };
+  if (metric === 'minutes') return { sets: 1, reps: '20', restSec: 0, metric };
+  if (CORE.has(slot)) return { sets: beginner ? 2 : 3, reps: '10-15', restSec: 45, metric };
   const iso = ISOLATION.has(slot);
   switch (p.goal) {
     case 'strength':
-      return iso ? { sets: 3, reps: '10-12', restSec: 75 } : { sets: beginner ? 3 : 4, reps: beginner ? '6-8' : '5-8', restSec: 150 };
+      return iso ? { sets: 3, reps: '10-12', restSec: 75, metric } : { sets: beginner ? 3 : 4, reps: beginner ? '6-8' : '5-8', restSec: 150, metric };
     case 'fat_loss':
-      return { sets: 3, reps: iso ? '12-15' : '10-15', restSec: 60 };
+      return { sets: 3, reps: iso ? '12-15' : '10-15', restSec: 60, metric };
     case 'muscle':
     case 'recomp':
-      return iso ? { sets: 3, reps: '12-15', restSec: 60 } : { sets: beginner ? 3 : 4, reps: '8-12', restSec: 90 };
+      return iso ? { sets: 3, reps: '12-15', restSec: 60, metric } : { sets: beginner ? 3 : 4, reps: '8-12', restSec: 90, metric };
     default:
-      return { sets: beginner ? 2 : 3, reps: iso ? '12-15' : '10-12', restSec: 75 };
+      return { sets: beginner ? 2 : 3, reps: iso ? '12-15' : '10-12', restSec: 75, metric };
   }
 }
 
+/** 5 minutes of easy cardio, then two or three drills for the muscles this session trains. */
+function buildWarmup(groups: string[], equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanItem[] {
+  const items: PlanItem[] = [];
+  const used = new Set<string>();
+  const cardio = pickFromSlot('cardio', equipment, used, exclude.ids);
+  if (cardio) {
+    used.add(cardio);
+    items.push({
+      uid: uid(), exerciseId: cardio, slot: 'warmup', phase: 'warmup', sets: 1, reps: '5', metric: 'minutes', restSec: 0,
+      note: 'Easy pace, just enough to warm up and raise your heart rate.',
+    });
+  }
+  // Specific first, so an arms day gets arm drills rather than generic ones.
+  const specific: string[] = [];
+  for (const g of groups) for (const id of WARMUP_BY_GROUP[g] ?? []) if (!specific.includes(id)) specific.push(id);
+  const picked: string[] = [];
+  for (const id of [...specific, ...WARMUP_GENERAL]) {
+    if (picked.length >= 3) break;
+    if (used.has(id) || picked.includes(id) || exclude.ids.has(id)) continue;
+    const e = getExercise(id);
+    if (!e || !isAvailable(e, equipment)) continue;
+    picked.push(id);
+  }
+  for (const id of picked) {
+    const e = getExercise(id)!;
+    const timed = e.category === 'stretching' || TIMED_HOLDS.has(id);
+    items.push({
+      uid: uid(), exerciseId: id, slot: 'warmup', phase: 'warmup', sets: 1,
+      reps: timed ? '30' : '10-12', metric: timed ? 'seconds' : 'reps', restSec: 0,
+      note: timed ? 'Slow and controlled, both sides.' : 'Light and easy, no weight.',
+    });
+  }
+  return items;
+}
+
 function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanSession {
-  const maxItems = Math.max(4, Math.min(p.experience === 'beginner' ? 6 : 8, Math.round(p.session_minutes / 10)));
+  // Warm-up takes about 8 minutes, so the rest of the session fills with working exercises.
+  const maxItems = Math.max(5, Math.min(p.experience === 'beginner' ? 7 : 9, Math.round((p.session_minutes - 8) / 6)));
   const used = new Set<string>();
   const items: PlanItem[] = [];
   for (const slot of t.slots) {
@@ -202,15 +282,15 @@ function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude:
     const id = pickFromSlot(slot, equipment, used, exclude.ids);
     if (!id) continue;
     used.add(id);
-    items.push({ uid: uid(), exerciseId: id, slot, ...prescription(p, slot) });
+    items.push({ uid: uid(), exerciseId: id, slot, phase: 'main', ...prescription(p, slot, id) });
   }
   return {
     id: uid(),
     title: t.title,
     type: 'strength',
     focus: t.groups,
-    warmup: '5 min easy cardio, then 1 or 2 light warm-up sets of the first exercise.',
-    items,
+    warmup: 'Then 1 or 2 light sets of the first exercise before your working sets.',
+    items: [...buildWarmup(t.groups, equipment, exclude), ...items],
   };
 }
 
@@ -221,19 +301,25 @@ function buildCardio(p: Profile, equipment: Set<string>, exclude: { slots: Set<s
   const c = pickFromSlot('cardio', equipment, used, exclude.ids);
   if (c) {
     used.add(c);
-    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: `${minutes} min`, restSec: 0, note: 'Steady pace: you can still talk in short sentences.' });
+    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: String(minutes), metric: 'minutes', restSec: 0, note: 'Steady pace: you can still talk in short sentences.' });
   }
   for (const slot of ['core', 'core2']) {
     const id = pickFromSlot(slot, equipment, used, exclude.ids);
     if (id) {
       used.add(id);
-      items.push({ uid: uid(), exerciseId: id, slot, sets: 2, reps: '10-15 (or 30s hold)', restSec: 45 });
+      items.push({ uid: uid(), exerciseId: id, slot, ...prescription(p, slot, id), sets: 2 });
     }
   }
   for (const id of STRETCHES.slice(0, 3)) {
-    if (getExercise(id)) items.push({ uid: uid(), exerciseId: id, slot: 'stretch', sets: 1, reps: '30s each side', restSec: 0 });
+    if (getExercise(id)) items.push({ uid: uid(), exerciseId: id, slot: 'stretch', sets: 1, reps: '30', metric: 'seconds', restSec: 0, note: 'Each side.' });
   }
-  return { id: uid(), title: light ? 'Light Cardio & Mobility' : 'Cardio & Core', type: 'cardio', focus: ['cardio', 'core'], items };
+  return {
+    id: uid(),
+    title: light ? 'Light Cardio & Mobility' : 'Cardio & Core',
+    type: 'cardio',
+    focus: ['cardio', 'core'],
+    items: items.map((i) => ({ ...i, phase: 'main' as const })),
+  };
 }
 
 // ---------- Main ----------

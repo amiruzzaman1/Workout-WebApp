@@ -1,13 +1,13 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { Button, Card, Chip, H1, Input, Label, P, Row, Screen } from '../src/components/ui';
-import { DobInput, NumberField, WorkFields } from '../src/components/BodyFields';
-import { confirm } from '../src/lib/confirm';
-import { DAY_SHORT, Profile, SPLIT_LABELS, SplitChoice, WEEK_ORDER } from '../src/lib/planner';
-import { ageFrom, cmToFtIn, ftInToCm } from '../src/lib/nutrition';
-import { DEFAULT_PROFILE, useStore } from '../src/lib/store';
-import { C } from '../src/lib/theme';
+import { Button, Card, Chip, H1, Input, Label, P, Row, Screen } from '../../../src/components/ui';
+import { DobInput, NumberField, WorkFields } from '../../../src/components/BodyFields';
+import { confirm } from '../../../src/lib/confirm';
+import { DAY_SHORT, Profile, SPLIT_LABELS, SplitChoice, WEEK_ORDER } from '../../../src/lib/planner';
+import { ageFrom, cmToFtIn, ftInToCm } from '../../../src/lib/nutrition';
+import { DEFAULT_PROFILE, useStore } from '../../../src/lib/store';
+import { C } from '../../../src/lib/theme';
 
 const GOALS: [Profile['goal'], string][] = [
   ['general', 'General fitness'],

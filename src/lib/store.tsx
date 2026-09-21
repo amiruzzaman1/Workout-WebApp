@@ -5,6 +5,7 @@ import { Exercise, setCustomExercises } from './exercises';
 import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
+import { ActivityLog, SleepLog, WeightLog } from './tracker';
 import { supabase } from './supabase';
 
 type PlanRow = { id: string; name: string; data: PlanData };
@@ -32,6 +33,15 @@ type Store = {
   deleteFoodEntry: (id: string) => Promise<void>;
   saveFood: (f: Food) => Promise<void>;
   setWater: (day: string, ml: number) => Promise<void>;
+  sleep: SleepLog[];
+  activities: ActivityLog[];
+  saveSleep: (row: SleepLog) => Promise<void>;
+  addActivity: (row: Omit<ActivityLog, 'id'>) => Promise<ActivityLog>;
+  updateActivity: (id: string, ch: Partial<ActivityLog>) => Promise<void>;
+  deleteActivity: (id: string) => Promise<void>;
+  weights: WeightLog[];
+  logWeight: (row: WeightLog) => Promise<void>;
+  deleteWeight: (day: string) => Promise<void>;
   saveProfile: (p: Partial<Profile>) => Promise<Profile>;
   savePlan: (data: PlanData) => Promise<void>;
   regeneratePlan: (p?: Profile) => Promise<void>;
@@ -96,6 +106,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([]);
   const [myFoods, setMyFoods] = useState<Food[]>([]);
   const [water, setWaterState] = useState<Record<string, number>>({});
+  const [sleep, setSleep] = useState<SleepLog[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [weights, setWeights] = useState<WeightLog[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -108,21 +121,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFoodEntries([]);
       setMyFoods([]);
       setWaterState({});
+      setSleep([]);
+      setActivities([]);
+      setWeights([]);
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-    const [pr, pl, cx, lg, gv, fe, fd, wl] = await Promise.all([
+    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', s.user.id).maybeSingle(),
       supabase.from('plans').select('id,name,data').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('custom_exercises').select('*').order('created_at'),
-      supabase.from('workout_logs').select('id,performed_on,exercise_id,set_number,reps,weight_kg,unit,session_title,target_reps,created_at')
+      supabase.from('workout_logs').select('id,performed_on,exercise_id,set_number,reps,weight_kg,unit,session_title,target_reps,metric,created_at')
         .gte('performed_on', since).order('performed_on', { ascending: false }).limit(5000),
       supabase.from('gym_visits').select('id,visit_date,started_at,ended_at,session_title')
         .gte('visit_date', since).order('started_at', { ascending: false }).limit(1000),
       supabase.from('food_entries').select('*').gte('eaten_on', since).order('created_at', { ascending: true }).limit(5000),
       supabase.from('foods').select('*').order('created_at', { ascending: false }).limit(500),
       supabase.from('water_logs').select('day,ml').gte('day', since).limit(500),
+      supabase.from('sleep_logs').select('night_of,bed_time,wake_time,minutes,note').gte('night_of', since).order('night_of', { ascending: false }).limit(400),
+      supabase.from('activity_logs').select('id,day,title,description,category,started_at,ended_at,minutes').gte('day', since).order('created_at', { ascending: true }).limit(2000),
+      supabase.from('weight_logs').select('day,kg,waist_cm').order('day', { ascending: true }).limit(2000),
     ]);
+    setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
+    setSleep((sl.data ?? []) as SleepLog[]);
+    setActivities((al.data ?? []) as ActivityLog[]);
     const numify = (r: any) => {
       const o: any = { ...r };
       for (const k of ['amount', 'kcal', 'protein_g', 'carbs_g', 'sugars_g', 'fat_g', 'sat_fat_g', 'fibre_g', 'sodium_mg'])
@@ -332,6 +354,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) console.warn(error.message);
   }, []);
 
+  const saveSleep = useCallback(async (row: SleepLog) => {
+    setSleep((l) => [row, ...l.filter((x) => x.night_of !== row.night_of)]);
+    const { error } = await supabase.from('sleep_logs').upsert(row, { onConflict: 'user_id,night_of' });
+    if (error) console.warn(error.message);
+  }, []);
+
+  const addActivity = useCallback(async (row: Omit<ActivityLog, 'id'>) => {
+    const { data, error } = await supabase.from('activity_logs').insert(row).select().single();
+    if (error) throw new Error(error.message);
+    setActivities((l) => [...l, data as ActivityLog]);
+    return data as ActivityLog;
+  }, []);
+
+  const updateActivity = useCallback(async (id: string, ch: Partial<ActivityLog>) => {
+    setActivities((l) => l.map((r) => (r.id === id ? { ...r, ...ch } : r)));
+    const { error } = await supabase.from('activity_logs').update(ch).eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const deleteActivity = useCallback(async (id: string) => {
+    setActivities((l) => l.filter((r) => r.id !== id));
+    const { error } = await supabase.from('activity_logs').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const logWeight = useCallback(async (row: WeightLog) => {
+    const next = [...weights.filter((w) => w.day !== row.day), row].sort((a, b) => (a.day < b.day ? -1 : 1));
+    setWeights(next);
+    const { error } = await supabase.from('weight_logs').upsert(row, { onConflict: 'user_id,day' });
+    if (error) throw new Error(error.message);
+    // The newest weigh in becomes your current weight, so calorie targets follow it.
+    const latest = [...next].reverse().find((w) => w.kg != null);
+    if (latest && latest.day === row.day && row.kg != null && Number(profile?.weight_kg) !== row.kg) await saveProfile({ weight_kg: row.kg });
+  }, [weights, profile, saveProfile]);
+
+  const deleteWeight = useCallback(async (day: string) => {
+    setWeights((l) => l.filter((w) => w.day !== day));
+    const { error } = await supabase.from('weight_logs').delete().eq('day', day);
+    if (error) throw new Error(error.message);
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -341,6 +404,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, setWater,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, weights, logWeight, deleteWeight,
     saveProfile, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

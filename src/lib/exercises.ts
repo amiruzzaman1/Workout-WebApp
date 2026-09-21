@@ -45,6 +45,17 @@ export const MUSCLE_GROUPS: Record<string, string[]> = {
   Core: ['abdominals'],
 };
 
+/** Which of the app's groups an exercise belongs to. */
+export function groupOf(e: Exercise | undefined): string {
+  if (!e) return 'Mobility';
+  if (e.category === 'cardio') return 'Cardio';
+  if (e.category === 'stretching') return 'Mobility';
+  for (const [g, muscles] of Object.entries(MUSCLE_GROUPS)) {
+    if (e.primary.some((m) => muscles.includes(m))) return g;
+  }
+  return 'Mobility';
+}
+
 export function titleCase(s: string) {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -55,6 +66,7 @@ export function titleCase(s: string) {
  */
 export function requiredKey(e: Exercise): string | null | 'unknown' {
   if (e.custom) return null;
+  if (e.category === 'stretching') return null; // mobility work needs no kit
   if (EXERCISE_TO_MACHINE[e.id]) return EXERCISE_TO_MACHINE[e.id];
   if (e.equipment in EQUIPMENT_TO_KEY) return EQUIPMENT_TO_KEY[e.equipment];
   return 'unknown';

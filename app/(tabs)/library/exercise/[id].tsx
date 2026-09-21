@@ -1,14 +1,15 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Text, View } from 'react-native';
-import { BarChart } from '../../src/components/BarChart';
-import { ExerciseAnimation } from '../../src/components/ExerciseAnimation';
-import { Bullets, Button, Eyebrow, H1, P, Row, Screen, Section } from '../../src/components/ui';
-import { MACHINE_BY_KEY } from '../../src/data/machines';
-import { getExercise, isAvailable, requiredKey, titleCase } from '../../src/lib/exercises';
-import { fmtWeight, sessionsFor, suggest, todayISO, workingWeight } from '../../src/lib/progress';
-import { useStore } from '../../src/lib/store';
-import { A, C, F } from '../../src/lib/theme';
+import { BarChart } from '../../../../src/components/BarChart';
+import { ExerciseAnimation } from '../../../../src/components/ExerciseAnimation';
+import { Bullets, Button, Eyebrow, H1, P, Row, Screen, Section } from '../../../../src/components/ui';
+import { MACHINE_BY_KEY } from '../../../../src/data/machines';
+import { metricFor } from '../../../../src/lib/planner';
+import { getExercise, isAvailable, requiredKey, titleCase } from '../../../../src/lib/exercises';
+import { fmtWeight, sessionsFor, suggest, todayISO, workingWeight } from '../../../../src/lib/progress';
+import { useStore } from '../../../../src/lib/store';
+import { A, C, F } from '../../../../src/lib/theme';
 
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,7 +25,7 @@ export default function ExerciseDetail() {
   }, [plan, exId]);
   const today = todayISO();
   const sug = useMemo(
-    () => (planItem ? suggest(logs.filter((l) => l.performed_on < today), exId, planItem.reps, planItem.sets) : null),
+    () => (planItem ? suggest(logs.filter((l) => l.performed_on < today), exId, planItem.reps, planItem.sets, planItem.metric ?? metricFor(exId)) : null),
     [logs, exId, planItem, today],
   );
 
@@ -59,7 +60,7 @@ export default function ExerciseDetail() {
 
       {machine && machine.setup.length > 0 && (
         <Row style={{ marginTop: 4 }}>
-          <Button kind="secondary" small title={`How to set up the ${machine.name}`} onPress={() => router.push(`/machine/${machine.key}`)} />
+          <Button kind="secondary" small title={`How to set up the ${machine.name}`} onPress={() => router.push(`/library/machine/${machine.key}`)} />
         </Row>
       )}
 

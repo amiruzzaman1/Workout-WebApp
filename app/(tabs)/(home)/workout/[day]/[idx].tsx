@@ -2,15 +2,16 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ExerciseThumb } from '../../../src/components/ExerciseAnimation';
-import { Button, Eyebrow, H1, P, Row, Screen } from '../../../src/components/ui';
-import { getExercise } from '../../../src/lib/exercises';
-import { DAY_NAMES, PlanItem } from '../../../src/lib/planner';
+import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
+import { Button, Eyebrow, H1, P, Row, Screen } from '../../../../../src/components/ui';
+import { getExercise, groupOf } from '../../../../../src/lib/exercises';
+import { groupColor } from '../../../../../src/lib/groups';
+import { DAY_NAMES, METRIC_SHORT, metricFor, PlanItem } from '../../../../../src/lib/planner';
 import {
   defaultUnit, fmtDuration, fmtWeight, LogRow, parseRange, secondsByDate, sessionsFor, suggest, todayISO, Unit, visitSeconds, workingWeight,
-} from '../../../src/lib/progress';
-import { useStore } from '../../../src/lib/store';
-import { A, C, F, R } from '../../../src/lib/theme';
+} from '../../../../../src/lib/progress';
+import { useStore } from '../../../../../src/lib/store';
+import { A, C, F, R } from '../../../../../src/lib/theme';
 
 type Draft = { weight: string; reps: string; logId?: string };
 
@@ -41,9 +42,11 @@ export default function WorkoutScreen() {
 
   if (!session) return <Screen><P>Session not found.</P></Screen>;
 
+  const warmups = session.items.filter((i) => i.phase === 'warmup');
+  const mainItems = session.items.filter((i) => i.phase !== 'warmup');
   const todays = logs.filter((l) => l.performed_on === today);
-  const doneSets = session.items.reduce((a, it) => a + todays.filter((l) => l.exercise_id === it.exerciseId).length, 0);
-  const totalSets = session.items.reduce((a, it) => a + Math.max(1, it.sets), 0);
+  const doneSets = mainItems.reduce((a, it) => a + todays.filter((l) => l.exercise_id === it.exerciseId).length, 0);
+  const totalSets = mainItems.reduce((a, it) => a + Math.max(1, it.sets), 0);
   const pct = totalSets ? Math.min(1, doneSets / totalSets) : 0;
   const todayTotal = secondsByDate(visits, now).get(today) ?? 0;
   const ensureTimer = () => { if (!activeVisit) startVisit(session.title); };
@@ -92,7 +95,22 @@ export default function WorkoutScreen() {
         </View>
         {session.warmup && <P muted style={{ fontSize: 14, marginTop: 8 }}>Warm-up: {session.warmup}</P>}
 
-        {session.items.map((it, i) => (
+        {warmups.length > 0 && (
+          <View style={{ marginTop: 18, gap: 4 }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={st.sectionLabel}>Warm-up</Text>
+              <Text style={st.meta}>about 8 min</Text>
+            </Row>
+            <Text style={st.meta}>Picked for what today trains. Light and easy, nothing near failure.</Text>
+            {warmups.map((it, i) => (
+              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} compact
+                onRest={() => ensureTimer()} />
+            ))}
+          </View>
+        )}
+
+        <Text style={[st.sectionLabel, { marginTop: 22 }]}>Working sets</Text>
+        {mainItems.map((it, i) => (
           <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
         ))}
 
@@ -114,18 +132,31 @@ export default function WorkoutScreen() {
   );
 }
 
-function ExerciseBlock({ item, index, sessionTitle, onRest }: { item: PlanItem; index: number; sessionTitle: string; onRest: (sec: number) => void }) {
+function ExerciseBlock({ item, index, sessionTitle, onRest, compact }: { item: PlanItem; index: number; sessionTitle: string; onRest: (sec: number) => void; compact?: boolean }) {
   const router = useRouter();
   const { logs, addLog, deleteLog, updateLog } = useStore();
   const e = getExercise(item.exerciseId);
   const today = todayISO();
   const range = parseRange(item.reps);
   const past = useMemo(() => logs.filter((l) => l.performed_on < today), [logs, today]);
-  const sug = useMemo(() => suggest(past, item.exerciseId, item.reps, item.sets), [past, item.exerciseId, item.reps, item.sets]);
+  const sug = useMemo(
+    () => suggest(past, item.exerciseId, item.reps, item.sets, item.metric ?? metricFor(item.exerciseId)),
+    [past, item.exerciseId, item.reps, item.sets, item.metric],
+  );
   const last = useMemo(() => sessionsFor(past, item.exerciseId)[0], [past, item.exerciseId]);
   const todayLogs = logs.filter((l) => l.performed_on === today && l.exercise_id === item.exerciseId).sort((a, b) => a.set_number - b.set_number);
 
+  const metric = item.metric ?? metricFor(item.exerciseId);
+  const timed = metric !== 'reps';
   const machineLike = e && ['machine', 'cable', 'other'].includes(e.equipment);
+  const [watch, setWatch] = useState<{ from: number } | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!watch) return;
+    const id = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(id);
+  }, [watch]);
+  const elapsed = watch ? Math.max(0, Math.round((Date.now() - watch.from) / 1000)) : 0;
   const [unit, setUnit] = useState<Unit>(todayLogs[0]?.unit ?? last?.unit ?? defaultUnit(e));
   const startWeight = sug.weight ?? (last ? workingWeight(last) : undefined);
 
@@ -157,7 +188,7 @@ function ExerciseBlock({ item, index, sessionTitle, onRest }: { item: PlanItem; 
         const weight = r.weight.trim() === '' ? null : Number(r.weight.replace(',', '.'));
         const row: Omit<LogRow, 'id'> = {
           performed_on: today, exercise_id: item.exerciseId, set_number: k + 1, reps, weight_kg: Number.isFinite(weight as number) ? weight : null,
-          unit, session_title: sessionTitle, target_reps: item.reps,
+          unit, session_title: sessionTitle, target_reps: item.reps, metric,
         };
         const saved = await addLog(row);
         // carry the weight forward to the next empty set
@@ -184,16 +215,20 @@ function ExerciseBlock({ item, index, sessionTitle, onRest }: { item: PlanItem; 
 
   return (
     <View style={st.block}>
-      <Pressable onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-        <ExerciseThumb exercise={e} size={56} />
+      <Pressable onPress={() => router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
+        <ExerciseThumb exercise={e} size={compact ? 44 : 56} />
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={st.idx}>{String(index + 1).padStart(2, '0')}{complete ? '  ·  DONE' : ''}</Text>
-          <Text style={st.name}>{e.name}</Text>
-          <Text style={st.meta}>{item.sets} × {item.reps}{item.restSec ? ` · rest ${item.restSec}s` : ''} · how-to ›</Text>
+          <Text style={[st.idx, { color: groupColor(groupOf(e)) }]}>
+            {groupOf(e).toUpperCase()}{complete ? '  ·  DONE' : ''}
+          </Text>
+          <Text style={[st.name, compact && { fontSize: 16 }]}>{e.name}</Text>
+          <Text style={st.meta}>
+            {item.sets} × {item.reps} {METRIC_SHORT[metric]}{item.restSec ? ` · rest ${item.restSec}s` : ''} · how-to ›
+          </Text>
         </View>
       </Pressable>
 
-      {sug.kind !== 'none' && (
+      {sug.kind !== 'none' && !compact && (
         <View style={[st.tip, { borderLeftColor: sug.kind === 'increase' ? A.up : sug.kind === 'decrease' ? A.down : C.borderStrong }]}>
           <Text style={[st.tipHead, sug.kind === 'increase' && { color: A.up }, sug.kind === 'decrease' && { color: A.down }]}>
             {sug.kind === 'increase' ? '↑ ' : sug.kind === 'decrease' ? '↓ ' : ''}{sug.headline}
@@ -204,7 +239,7 @@ function ExerciseBlock({ item, index, sessionTitle, onRest }: { item: PlanItem; 
       )}
       {item.note && <Text style={st.meta}>{item.note}</Text>}
 
-      {range && (machineLike || unit === 'bw') && (
+      {range && !timed && (machineLike || unit === 'bw') && (
         <Row style={{ gap: 0, alignSelf: 'flex-start' }}>
           {(machineLike ? (['kg', 'level'] as Unit[]) : (['bw', 'kg'] as Unit[])).map((u) => (
             <Pressable key={u} onPress={() => setUnit(u)} style={[st.seg, unit === u && st.segOn]}>
@@ -214,17 +249,37 @@ function ExerciseBlock({ item, index, sessionTitle, onRest }: { item: PlanItem; 
         </Row>
       )}
 
+      {timed && (
+        <Row style={{ gap: 10 }}>
+          <Pressable
+            onPress={() => {
+              if (!watch) return setWatch({ from: Date.now() });
+              const value = metric === 'seconds' ? elapsed : Math.max(1, Math.round(elapsed / 60));
+              const k = rows.findIndex((r) => !r.logId);
+              if (k >= 0) setRow(k, { reps: String(value) });
+              setWatch(null);
+            }}
+            style={[st.timerBtn2, watch && { backgroundColor: C.inverse, borderColor: C.inverse }]}
+          >
+            <Text style={[st.timerBtn2Text, watch && { color: C.inverseText }]}>
+              {watch ? `Stop · ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}` : 'Start timer'}
+            </Text>
+          </Pressable>
+          <Text style={st.meta}>{watch ? 'Tap stop and it fills the next set.' : `Times the set for you, in ${metric}.`}</Text>
+        </Row>
+      )}
+
       <View style={{ gap: 6 }}>
         <View style={st.headRow}>
           <Text style={[st.col, { width: 34 }]}>SET</Text>
-          {range && <Text style={[st.col, { flex: 1 }]}>{unit === 'level' ? 'LEVEL' : unit === 'bw' ? '+KG' : 'KG'}</Text>}
-          <Text style={[st.col, { flex: 1 }]}>{range ? 'REPS' : 'TARGET'}</Text>
+          {range && !timed && <Text style={[st.col, { flex: 1 }]}>{unit === 'level' ? 'LEVEL' : unit === 'bw' ? '+KG' : 'KG'}</Text>}
+          <Text style={[st.col, { flex: 1 }]}>{range ? (metric === 'seconds' ? 'SECONDS' : metric === 'minutes' ? 'MINUTES' : 'REPS') : 'TARGET'}</Text>
           <View style={{ width: 44 }} />
         </View>
         {rows.map((r, k) => (
           <View key={k} style={[st.setRow, r.logId && st.setRowDone]}>
             <Text style={[st.setNum, r.logId && { color: C.inverseText }]}>{k + 1}</Text>
-            {range && (
+            {range && !timed && (
               <TextInput
                 value={r.weight}
                 onChangeText={(t) => setRow(k, { weight: t.replace(/[^0-9.,]/g, '') })}
@@ -268,11 +323,14 @@ const st = StyleSheet.create({
   timerLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4 },
   timerClock: { color: C.text, fontFamily: F.display, fontSize: 34, letterSpacing: -1, fontVariant: ['tabular-nums'] },
   timerBtn: { paddingVertical: 10, paddingHorizontal: 18, borderRadius: R.sm, borderWidth: 1, borderColor: C.borderStrong },
+  timerBtn2: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: R.sm, borderWidth: 1, borderColor: C.borderStrong },
+  timerBtn2Text: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   timerBtnOn: { backgroundColor: C.inverse, borderColor: C.inverse },
   timerBtnText: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   track: { height: 2, backgroundColor: C.border },
   fill: { height: 2, backgroundColor: A.up },
   block: { gap: 12, paddingTop: 22, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  sectionLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase' },
   idx: { color: C.faint, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1 },
   name: { color: C.text, fontFamily: F.display, fontSize: 19, letterSpacing: -0.3 },
   tip: { borderLeftWidth: 2, borderLeftColor: C.borderStrong, paddingLeft: 12, paddingVertical: 2, gap: 3 },

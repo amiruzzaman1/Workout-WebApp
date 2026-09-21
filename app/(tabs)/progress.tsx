@@ -1,15 +1,21 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from '../../src/components/BarChart';
+import { CAT_COLORS } from '../../src/components/DayTrackers';
 import { ExerciseThumb } from '../../src/components/ExerciseAnimation';
-import { Card, Eyebrow, H1, ListRow, P, Row, Screen, Section, Stat } from '../../src/components/ui';
+import { LineChart } from '../../src/components/LineChart';
+import { Button, Card, Chip, Eyebrow, H1, H2, Input, Label, ListRow, P, Row, Screen, Section, Stat } from '../../src/components/ui';
 import { getExercise } from '../../src/lib/exercises';
-import { fmtDuration, fmtWeight, secondsByDate, sessionsFor, suggest, visitSeconds, workingWeight } from '../../src/lib/progress';
+import { computeTargets, MEAL_LABELS, MEALS, round, totals } from '../../src/lib/nutrition';
+import { metricFor } from '../../src/lib/planner';
+import { fmtDuration, fmtWeight, secondsByDate, sessionsFor, suggest, todayISO, visitSeconds, workingWeight } from '../../src/lib/progress';
 import { useStore } from '../../src/lib/store';
-import { A, C, F } from '../../src/lib/theme';
+import { A, C, F, R } from '../../src/lib/theme';
+import { ACTIVITY_CATEGORIES, fmtMinutes, isTime } from '../../src/lib/tracker';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function mondayOf(d: Date) {
   const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
@@ -19,8 +25,476 @@ function iso(d: Date) {
   const z = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
 }
+function shift(isoDay: string, days: number) {
+  const d = new Date(isoDay + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return iso(d);
+}
+function nice(isoDay: string, withDay = false) {
+  const d = new Date(isoDay + 'T00:00:00');
+  return `${withDay ? WD[d.getDay()] + ' ' : ''}${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+const dayNum = (isoDay: string) => Math.round(new Date(isoDay + 'T00:00:00').getTime() / 864e5);
+
+type Tab = 'weight' | 'food' | 'training' | 'sleep';
+const TABS: { key: Tab; label: string; color: string }[] = [
+  { key: 'weight', label: 'Weight', color: A.protein },
+  { key: 'food', label: 'Food', color: A.carbs },
+  { key: 'training', label: 'Training', color: A.up },
+  { key: 'sleep', label: 'Sleep', color: A.fat },
+];
 
 export default function ProgressScreen() {
+  const [tab, setTab] = useState<Tab>('weight');
+  return (
+    <Screen top>
+      <Eyebrow>Progress</Eyebrow>
+      <H1>Your progress</H1>
+      <View style={st.seg}>
+        {TABS.map((t) => {
+          const on = t.key === tab;
+          return (
+            <Pressable key={t.key} onPress={() => setTab(t.key)} style={[st.segBtn, on && { backgroundColor: t.color + '26', borderColor: t.color }]}>
+              <Text style={[st.segText, on && { color: t.color }]}>{t.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {tab === 'weight' && <WeightTab />}
+      {tab === 'food' && <FoodTab />}
+      {tab === 'training' && <TrainingTab />}
+      {tab === 'sleep' && <SleepTab />}
+    </Screen>
+  );
+}
+
+// ---------------- Weight ----------------
+
+const RANGES = [
+  { key: '1M', days: 30 },
+  { key: '3M', days: 91 },
+  { key: '6M', days: 182 },
+  { key: '1Y', days: 365 },
+  { key: 'All', days: 100000 },
+];
+
+function WeightTab() {
+  const { weights, profile, logWeight, deleteWeight } = useStore();
+  const [range, setRange] = useState('3M');
+  const [day, setDay] = useState(todayISO());
+  const last = [...weights].reverse().find((w) => w.kg != null);
+  const [kg, setKg] = useState('');
+  const [waist, setWaist] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [showAll, setShowAll] = useState(false);
+
+  const withKg = weights.filter((w) => w.kg != null) as { day: string; kg: number; waist_cm: number | null }[];
+  const start = withKg[0]?.kg ?? (profile?.weight_kg ? Number(profile.weight_kg) : null);
+  const current = last?.kg ?? (profile?.weight_kg ? Number(profile.weight_kg) : null);
+  const goal = profile?.target_weight_kg ? Number(profile.target_weight_kg) : null;
+  const change = start != null && current != null ? round(current - start, 1) : null;
+  const wantDown = goal != null && start != null ? goal < start : true;
+  const good = change == null || change === 0 ? null : wantDown ? change < 0 : change > 0;
+  const toGo = goal != null && current != null ? round(Math.abs(current - goal), 1) : null;
+  const pct = goal != null && start != null && current != null && start !== goal
+    ? Math.max(0, Math.min(1, (start - current) / (start - goal))) : null;
+
+  const days = RANGES.find((r) => r.key === range)!.days;
+  const cutoff = shift(todayISO(), -days);
+  const shown = withKg.filter((w) => w.day >= cutoff);
+  const points = shown.map((w, i) => {
+    const prev = i > 0 ? shown[i - 1].kg : null;
+    const diff = prev != null ? round(w.kg - prev, 1) : null;
+    return { x: dayNum(w.day), y: w.kg, caption: `${nice(w.day, true)}: ${w.kg} kg${diff ? `  (${diff > 0 ? '+' : ''}${diff})` : ''}` };
+  });
+  const waists = weights.filter((w) => w.waist_cm != null && w.day >= cutoff).map((w) => ({ x: dayNum(w.day), y: w.waist_cm!, caption: `${nice(w.day, true)}: ${w.waist_cm} cm waist` }));
+
+  // Weekly pace over the last 4 weeks of weigh ins.
+  const pace = useMemo(() => {
+    if (withKg.length < 2) return null;
+    const lastW = withKg[withKg.length - 1];
+    const from = withKg.find((w) => w.day >= shift(lastW.day, -28)) ?? withKg[0];
+    const span = dayNum(lastW.day) - dayNum(from.day);
+    if (span < 6) return null;
+    return round(((lastW.kg - from.kg) / span) * 7, 2);
+  }, [withKg]);
+
+  async function save() {
+    setErr('');
+    const k = kg.trim() ? Number(kg.replace(',', '.')) : null;
+    const wc = waist.trim() ? Number(waist.replace(',', '.')) : null;
+    if (k == null && wc == null) { setErr('Type your weight, your waist, or both.'); return; }
+    if (k != null && !(k >= 30 && k <= 300)) { setErr('Weight should be between 30 and 300 kg.'); return; }
+    if (wc != null && !(wc >= 40 && wc <= 250)) { setErr('Waist should be between 40 and 250 cm.'); return; }
+    setBusy(true);
+    try {
+      const existing = weights.find((w) => w.day === day);
+      await logWeight({ day, kg: k ?? existing?.kg ?? null, waist_cm: wc ?? existing?.waist_cm ?? null });
+      setKg(''); setWaist('');
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  const history = [...weights].reverse();
+
+  return (
+    <>
+      <Row style={{ gap: 10, marginTop: 18 }}>
+        <Stat value={current != null ? `${current}` : '?'} label="Current kg" color={A.protein} />
+        <Stat value={change == null ? '0' : `${change > 0 ? '+' : ''}${change}`} label="Since start" color={good == null ? C.borderStrong : good ? A.up : A.down} />
+        <Stat value={toGo != null ? `${toGo}` : '?'} label="kg to goal" color={A.fat} />
+      </Row>
+
+      {goal != null && start != null && pct != null && (
+        <Card style={{ gap: 10 }}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Text style={st.small}>Start {start} kg</Text>
+            <Text style={[st.small, { color: A.up }]}>{Math.round(pct * 100)}% there</Text>
+            <Text style={st.small}>Goal {goal} kg</Text>
+          </Row>
+          <View style={st.track}><View style={[st.fill, { width: `${Math.max(2, pct * 100)}%`, backgroundColor: A.up }]} /></View>
+          {pace != null && (
+            <Text style={st.small}>
+              Last 4 weeks: {pace > 0 ? '+' : ''}{pace} kg a week.{' '}
+              {Math.abs(pace) > 1 ? 'That is fast, check you are eating enough protein.' : pace === 0 ? 'Holding steady.' : (wantDown ? pace < 0 : pace > 0) ? 'Heading the right way.' : 'Moving away from your goal, check your food log.'}
+            </Text>
+          )}
+        </Card>
+      )}
+
+      <Section title="Weight trend" right={<Row style={{ gap: 4 }}>{RANGES.map((r) => (
+        <Pressable key={r.key} onPress={() => setRange(r.key)} style={[st.rangeBtn, range === r.key && { backgroundColor: C.card2 }]}>
+          <Text style={[st.rangeText, range === r.key && { color: C.text }]}>{r.key}</Text>
+        </Pressable>
+      ))}</Row>}>
+        <LineChart
+          points={points}
+          color={A.protein}
+          goal={goal}
+          goalLabel={goal != null ? `Goal ${goal} kg` : undefined}
+          emptyText={withKg.length ? 'No weigh ins in this range' : 'Log your first weigh in below to start your chart'}
+          startLabel={shown[0] ? nice(shown[0].day) : ''}
+          endLabel={shown.length > 1 ? nice(shown[shown.length - 1].day) : ''}
+        />
+      </Section>
+
+      <Section title="Log a weigh in">
+        <Card style={{ gap: 4 }}>
+          <Row wrap style={{ gap: 6 }}>
+            {[0, 1, 2].map((n) => {
+              const d = shift(todayISO(), -n);
+              return <Chip key={n} label={n === 0 ? 'Today' : n === 1 ? 'Yesterday' : nice(d, true)} active={day === d} dot={A.protein} onPress={() => setDay(d)} />;
+            })}
+          </Row>
+          <Row style={{ gap: 10, alignItems: 'flex-end' }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Label>Weight (kg)</Label>
+              <Input value={kg} onChangeText={(t) => setKg(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={last?.kg ? String(last.kg) : '80.5'} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Label>Waist (cm, optional)</Label>
+              <Input value={waist} onChangeText={(t) => setWaist(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="92" />
+            </View>
+          </Row>
+          {!!err && <Text style={{ color: A.over, fontFamily: F.body, fontSize: 13, marginTop: 6 }}>{err}</Text>}
+          <Button small title="Save" loading={busy} onPress={save} style={{ alignSelf: 'flex-start', marginTop: 10 }} />
+          <Text style={[st.small, { marginTop: 8 }]}>Weigh yourself first thing in the morning, after the toilet and before food. Your daily targets update to your latest weight.</Text>
+        </Card>
+      </Section>
+
+      {waists.length > 0 && (
+        <Section title="Waist">
+          <LineChart points={waists} color={A.core} height={110} startLabel={nice(weights.filter((w) => w.waist_cm != null && w.day >= cutoff)[0].day)} />
+        </Section>
+      )}
+
+      {history.length > 0 && (
+        <Section title="History">
+          <View>
+            {(showAll ? history : history.slice(0, 8)).map((w, i, arr) => {
+              const prev = history[i + 1];
+              const diff = prev?.kg != null && w.kg != null ? round(w.kg - prev.kg, 1) : null;
+              const col = diff == null || diff === 0 ? C.muted : (wantDown ? diff < 0 : diff > 0) ? A.up : A.down;
+              return (
+                <View key={w.day} style={st.hRow}>
+                  <Text style={st.hDate}>{nice(w.day, true)}</Text>
+                  <Text style={st.hKg}>{w.kg != null ? `${w.kg} kg` : ''}</Text>
+                  <Text style={[st.hDiff, { color: col }]}>{diff ? `${diff > 0 ? '+' : ''}${diff}` : ''}</Text>
+                  <Text style={[st.hDiff, { color: A.core, width: 64 }]}>{w.waist_cm != null ? `${w.waist_cm} cm` : ''}</Text>
+                  <Pressable onPress={() => deleteWeight(w.day)} hitSlop={8}><Text style={{ color: C.faint }}>✕</Text></Pressable>
+                </View>
+              );
+            })}
+          </View>
+          {history.length > 8 && <Button small kind="ghost" title={showAll ? 'Show less' : `Show all ${history.length}`} onPress={() => setShowAll(!showAll)} />}
+        </Section>
+      )}
+    </>
+  );
+}
+
+// ---------------- Food ----------------
+
+function FoodTab() {
+  const { foodEntries, profile, water } = useStore();
+  const [span, setSpan] = useState(7);
+  const t = useMemo(() => computeTargets(profile as any), [profile]);
+  const today = todayISO();
+  const from = shift(today, -(span - 1));
+  const inRange = foodEntries.filter((e) => e.eaten_on >= from && e.eaten_on <= today);
+
+  const byDay = useMemo(() => {
+    const out: { day: string; kcal: number; protein: number; carbs: number; fat: number; fibre: number }[] = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const d = shift(today, -i);
+      const s = totals(inRange.filter((e) => e.eaten_on === d));
+      out.push({ day: d, kcal: s.kcal, protein: s.protein, carbs: s.carbs, fat: s.fat, fibre: s.fibre });
+    }
+    return out;
+  }, [inRange, span, today]);
+
+  const logged = byDay.filter((d) => d.kcal > 0);
+  const n = Math.max(1, logged.length);
+  const avg = {
+    kcal: logged.reduce((a, d) => a + d.kcal, 0) / n,
+    protein: logged.reduce((a, d) => a + d.protein, 0) / n,
+    carbs: logged.reduce((a, d) => a + d.carbs, 0) / n,
+    fat: logged.reduce((a, d) => a + d.fat, 0) / n,
+    fibre: logged.reduce((a, d) => a + d.fibre, 0) / n,
+  };
+  const onTarget = t.ready ? logged.filter((d) => Math.abs(d.kcal - t.kcal!) <= t.kcal! * 0.1).length : 0;
+  const proteinHit = t.ready ? logged.filter((d) => d.protein >= t.protein! * 0.9).length : 0;
+
+  const bars = byDay.map((d) => {
+    const diff = t.ready ? Math.round(d.kcal - t.kcal!) : 0;
+    return {
+      label: span <= 7 ? WD[new Date(d.day + 'T00:00:00').getDay()] : nice(d.day),
+      value: Math.round(d.kcal),
+      caption: `${nice(d.day, true)}: ${Math.round(d.kcal)} kcal${d.kcal && t.ready ? `, ${Math.abs(diff)} ${diff > 0 ? 'over' : 'under'} goal` : d.kcal ? '' : ', nothing logged'}`,
+    };
+  });
+
+  const macroKcal = avg.protein * 4 + avg.carbs * 4 + avg.fat * 9 || 1;
+  const split = [
+    { label: 'Protein', pct: (avg.protein * 4) / macroKcal, goal: t.ready ? (t.protein! * 4) / t.kcal! : 0, color: A.protein },
+    { label: 'Carbs', pct: (avg.carbs * 4) / macroKcal, goal: t.ready ? (t.carbs! * 4) / t.kcal! : 0, color: A.carbs },
+    { label: 'Fat', pct: (avg.fat * 9) / macroKcal, goal: t.ready ? (t.fat! * 9) / t.kcal! : 0, color: A.fat },
+  ];
+
+  const meals = MEALS.map((m) => ({ m, kcal: inRange.filter((e) => e.meal === m).reduce((a, e) => a + (Number(e.kcal) || 0), 0) }));
+  const mealTotal = meals.reduce((a, x) => a + x.kcal, 0) || 1;
+  const MEAL_COLORS: Record<string, string> = { breakfast: A.carbs, lunch: A.fibre, dinner: A.protein, snack: A.fat };
+
+  const topFoods = useMemo(() => {
+    const m = new Map<string, { kcal: number; protein: number; times: number }>();
+    for (const e of inRange) {
+      const k = e.name;
+      const cur = m.get(k) ?? { kcal: 0, protein: 0, times: 0 };
+      cur.kcal += Number(e.kcal) || 0; cur.protein += Number(e.protein_g) || 0; cur.times++;
+      m.set(k, cur);
+    }
+    return [...m.entries()].sort((a, b) => b[1].kcal - a[1].kcal).slice(0, 5);
+  }, [inRange]);
+
+  const waterDays = byDay.map((d) => water[d.day] ?? 0).filter((v) => v > 0);
+  const waterAvg = waterDays.length ? waterDays.reduce((a, b) => a + b, 0) / waterDays.length : 0;
+
+  return (
+    <>
+      <Row style={{ gap: 6, marginTop: 18 }}>
+        <Chip label="Last 7 days" active={span === 7} dot={A.carbs} onPress={() => setSpan(7)} />
+        <Chip label="Last 30 days" active={span === 30} dot={A.carbs} onPress={() => setSpan(30)} />
+      </Row>
+
+      <Row style={{ gap: 10 }}>
+        <Stat value={logged.length ? Math.round(avg.kcal) : '0'} label="Avg kcal a day" color={A.cardio} />
+        <Stat value={`${logged.length}/${span}`} label="Days logged" color={A.water} />
+        <Stat value={`${onTarget}`} label="Days on target" color={A.up} />
+      </Row>
+
+      <Section title="Calories" right={t.ready ? <Text style={st.small}>Goal {t.kcal} kcal</Text> : undefined}>
+        <BarChart data={bars} height={120} color={A.cardio} emptyText="Log food to see your calorie report" />
+      </Section>
+
+      {logged.length > 0 && (
+        <>
+          <Section title="Daily average vs goal">
+            <Card style={{ gap: 12 }}>
+              <AvgBar label="Protein" v={avg.protein} goal={t.protein} color={A.protein} />
+              <AvgBar label="Carbs" v={avg.carbs} goal={t.carbs} color={A.carbs} />
+              <AvgBar label="Fat" v={avg.fat} goal={t.fat} color={A.fat} />
+              <AvgBar label="Fibre" v={avg.fibre} goal={t.fibre} color={A.fibre} />
+              {t.ready && <Text style={st.small}>You hit your protein on {proteinHit} of {logged.length} logged days.</Text>}
+            </Card>
+          </Section>
+
+          <Section title="Where your calories came from">
+            <Card style={{ gap: 12 }}>
+              <Stacked parts={split.map((p) => ({ v: p.pct, color: p.color }))} />
+              <Row style={{ justifyContent: 'space-between' }}>
+                {split.map((p) => (
+                  <View key={p.label} style={{ flex: 1 }}>
+                    <Text style={[st.legendV, { color: p.color }]}>{Math.round(p.pct * 100)}%</Text>
+                    <Text style={st.small}>{p.label}{t.ready ? `, goal ${Math.round(p.goal * 100)}%` : ''}</Text>
+                  </View>
+                ))}
+              </Row>
+            </Card>
+          </Section>
+
+          <Section title="By meal">
+            <Card style={{ gap: 12 }}>
+              <Stacked parts={meals.map((x) => ({ v: x.kcal / mealTotal, color: MEAL_COLORS[x.m] }))} />
+              <Row style={{ justifyContent: 'space-between' }}>
+                {meals.map((x) => (
+                  <View key={x.m} style={{ flex: 1 }}>
+                    <Text style={[st.legendV, { color: MEAL_COLORS[x.m] }]}>{Math.round((x.kcal / mealTotal) * 100)}%</Text>
+                    <Text style={st.small}>{MEAL_LABELS[x.m]}</Text>
+                  </View>
+                ))}
+              </Row>
+            </Card>
+          </Section>
+
+          <Section title="Highest in calories">
+            <View>
+              {topFoods.map(([name, v], i) => (
+                <ListRow
+                  key={name}
+                  accent={[A.cardio, A.carbs, A.protein, A.fat, A.fibre][i]}
+                  title={name}
+                  subtitle={`${v.times} time${v.times === 1 ? '' : 's'} · ${Math.round(v.protein)} g protein`}
+                  right={<Text style={st.hKg}>{Math.round(v.kcal)} kcal</Text>}
+                />
+              ))}
+            </View>
+          </Section>
+        </>
+      )}
+
+      <Section title="Water">
+        <Row style={{ gap: 10 }}>
+          <Stat value={waterAvg ? `${(waterAvg / 1000).toFixed(1)} L` : '0 L'} label="Avg on days logged" color={A.water} />
+          <Stat value={t.ready ? `${(t.water! / 1000).toFixed(1)} L` : '?'} label="Daily goal" color={A.water} />
+        </Row>
+      </Section>
+    </>
+  );
+}
+
+function AvgBar({ label, v, goal, color }: { label: string; v: number; goal?: number; color: string }) {
+  const pct = goal ? v / goal : 0;
+  return (
+    <View style={{ gap: 5 }}>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <Text style={st.barLabel}>{label}</Text>
+        <Text style={st.small}><Text style={{ color: C.text, fontFamily: F.bodySemi }}>{Math.round(v)} g</Text>{goal ? ` of ${goal} g · ${Math.round(pct * 100)}%` : ''}</Text>
+      </Row>
+      <View style={st.track}><View style={[st.fill, { width: `${Math.min(100, Math.max(2, pct * 100))}%`, backgroundColor: pct > 1.15 && label !== 'Protein' && label !== 'Fibre' ? A.over : color }]} /></View>
+    </View>
+  );
+}
+
+function Stacked({ parts }: { parts: { v: number; color: string }[] }) {
+  return (
+    <View style={[st.track, { height: 12, flexDirection: 'row', gap: 2, backgroundColor: 'transparent' }]}>
+      {parts.filter((p) => p.v > 0).map((p, i) => (
+        <View key={i} style={{ flex: p.v, backgroundColor: p.color, borderRadius: 3 }} />
+      ))}
+    </View>
+  );
+}
+
+// ---------------- Sleep and time ----------------
+
+function clockToMin(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+/** Average clock times that can wrap past midnight (e.g. 23:30 and 00:30 average to 00:00). */
+function avgClock(times: string[]) {
+  if (!times.length) return null;
+  let sx = 0, sy = 0;
+  for (const t of times) { const a = (clockToMin(t) / 1440) * 2 * Math.PI; sx += Math.cos(a); sy += Math.sin(a); }
+  let a = Math.atan2(sy, sx); if (a < 0) a += 2 * Math.PI;
+  const m = Math.round((a / (2 * Math.PI)) * 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+function SleepTab() {
+  const { sleep, activities } = useStore();
+  const today = todayISO();
+  const nights = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = shift(today, -i);
+    const s = sleep.find((x) => x.night_of === d);
+    const m = s?.minutes ?? 0;
+    nights.push({ label: nice(d), value: Math.round((m / 60) * 10) / 10, caption: `${nice(d, true)}: ${m ? `${fmtMinutes(m)}${s?.bed_time ? `, ${s.bed_time} to ${s.wake_time}` : ''}` : 'not logged'}` });
+  }
+  const recent = sleep.filter((s) => s.night_of >= shift(today, -13) && s.minutes);
+  const avgMin = recent.length ? Math.round(recent.reduce((a, s) => a + (s.minutes ?? 0), 0) / recent.length) : 0;
+  const bed = avgClock(recent.map((s) => s.bed_time).filter((x): x is string => isTime(x)));
+  const wake = avgClock(recent.map((s) => s.wake_time).filter((x): x is string => isTime(x)));
+  const good = recent.filter((s) => (s.minutes ?? 0) >= 420).length;
+
+  const weekStart = shift(today, -6);
+  const weekActs = activities.filter((a) => a.day >= weekStart && a.minutes);
+  const byCat = ACTIVITY_CATEGORIES.map((c) => ({ c, min: weekActs.filter((a) => (a.category ?? 'Other') === c).reduce((x, a) => x + (a.minutes ?? 0), 0) })).filter((x) => x.min > 0);
+  const weekTotal = byCat.reduce((a, x) => a + x.min, 0);
+  const days7 = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = shift(today, -i);
+    const m = activities.filter((a) => a.day === d).reduce((x, a) => x + (a.minutes ?? 0), 0);
+    days7.push({ label: WD[new Date(d + 'T00:00:00').getDay()], value: m, caption: `${nice(d, true)}: ${m ? fmtMinutes(m) : 'nothing tracked'}` });
+  }
+  const projects = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of weekActs) m.set(a.title, (m.get(a.title) ?? 0) + (a.minutes ?? 0));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  }, [weekActs]);
+
+  return (
+    <>
+      <Row style={{ gap: 10, marginTop: 18 }}>
+        <Stat value={avgMin ? `${(avgMin / 60).toFixed(1)}h` : '0h'} label="Avg a night" color={A.fat} />
+        <Stat value={bed ?? '?'} label="Avg bedtime" color={A.protein} />
+        <Stat value={wake ?? '?'} label="Avg wake up" color={A.carbs} />
+      </Row>
+      <Section title="Sleep · 14 nights" right={recent.length ? <Text style={st.small}>{good} of {recent.length} nights 7h or more</Text> : undefined}>
+        <BarChart data={nights} height={110} color={A.fat} emptyText="Log your sleep on the Today page to see it here" />
+      </Section>
+
+      <Section title="Time tracked · 7 days" right={weekTotal ? <Text style={st.small}>{fmtMinutes(weekTotal)} total</Text> : undefined}>
+        <BarChart data={days7} height={100} color={A.water} emptyText="Use the time tracker on the Today page" />
+        {byCat.length > 0 && (
+          <Card style={{ gap: 12 }}>
+            <Stacked parts={byCat.map((x) => ({ v: x.min, color: CAT_COLORS[x.c] }))} />
+            <Row wrap style={{ gap: 14 }}>
+              {byCat.map((x) => (
+                <View key={x.c}>
+                  <Text style={[st.legendV, { color: CAT_COLORS[x.c] }]}>{fmtMinutes(x.min)}</Text>
+                  <Text style={st.small}>{x.c}</Text>
+                </View>
+              ))}
+            </Row>
+          </Card>
+        )}
+        {projects.length > 0 && (
+          <View>
+            {projects.map(([title, min]) => {
+              const cat = weekActs.find((a) => a.title === title)?.category ?? 'Other';
+              return <ListRow key={title} accent={CAT_COLORS[cat]} title={title} subtitle={cat} right={<Text style={st.hKg}>{fmtMinutes(min)}</Text>} />;
+            })}
+          </View>
+        )}
+      </Section>
+    </>
+  );
+}
+
+// ---------------- Training ----------------
+
+function TrainingTab() {
   const { logs, plan, visits } = useStore();
   const router = useRouter();
 
@@ -84,7 +558,7 @@ export default function ProgressScreen() {
     for (const d of plan.data.days) for (const s of d.sessions) for (const it of s.items) {
       if (seen.has(it.exerciseId)) continue;
       seen.add(it.exerciseId);
-      const sg = suggest(logs, it.exerciseId, it.reps, it.sets);
+      const sg = suggest(logs, it.exerciseId, it.reps, it.sets, it.metric ?? metricFor(it.exerciseId));
       if (sg.kind === 'increase' || sg.kind === 'decrease') out.push({ id: it.exerciseId, headline: sg.headline, detail: sg.detail, kind: sg.kind });
     }
     return out;
@@ -105,9 +579,8 @@ export default function ProgressScreen() {
   }, [logs]);
 
   return (
-    <Screen top>
-      <Eyebrow>Progress</Eyebrow>
-      <H1>{stats.total === 0 ? 'Start logging' : `${stats.total} workout${stats.total === 1 ? '' : 's'}`}</H1>
+    <>
+      <H2 style={{ marginTop: 18 }}>{stats.total === 0 ? 'Start logging' : `${stats.total} workout${stats.total === 1 ? '' : 's'}`}</H2>
       {stats.total === 0 && <P muted>Open today's workout and tick off your sets. Your weights, reps and suggestions will show up here.</P>}
 
       <Row style={{ gap: 10, marginTop: 8 }}>
@@ -149,7 +622,7 @@ export default function ProgressScreen() {
           {ready.map((r) => {
             const e = getExercise(r.id);
             return (
-              <Card key={r.id} onPress={() => router.push(`/exercise/${encodeURIComponent(r.id)}`)}
+              <Card key={r.id} onPress={() => router.push(`/library/exercise/${encodeURIComponent(r.id)}`)}
                 style={{ borderLeftWidth: 2, borderLeftColor: r.kind === 'increase' ? A.up : A.down }}>
                 <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 12 }}>{e?.name}</Text>
                 <Text style={{ color: r.kind === 'increase' ? A.up : A.down, fontFamily: F.display, fontSize: 20, letterSpacing: -0.4 }}>{r.headline}</Text>
@@ -170,7 +643,7 @@ export default function ProgressScreen() {
               return (
                 <ListRow
                   key={l.id}
-                  onPress={() => router.push(`/exercise/${encodeURIComponent(l.id)}`)}
+                  onPress={() => router.push(`/library/exercise/${encodeURIComponent(l.id)}`)}
                   left={<ExerciseThumb exercise={e} size={44} />}
                   title={e.name}
                   subtitle={`${lastLine}  ·  ${l.sessions} session${l.sessions === 1 ? '' : 's'}`}
@@ -193,7 +666,7 @@ export default function ProgressScreen() {
           always comes before more weight.
         </P>
       </Section>
-    </Screen>
+    </>
   );
 }
 
@@ -212,3 +685,20 @@ function Spark({ values, change, unit }: { values: number[]; change: number | nu
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  seg: { flexDirection: 'row', gap: 6, marginTop: 14, backgroundColor: C.card, borderRadius: R.lg, padding: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border },
+  segBtn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: R.md, borderWidth: 1, borderColor: 'transparent' },
+  segText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 13 },
+  small: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 17 },
+  track: { height: 8, borderRadius: 4, backgroundColor: C.card2, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 4 },
+  rangeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: R.sm },
+  rangeText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 11 },
+  hRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  hDate: { flex: 1, color: C.muted, fontFamily: F.body, fontSize: 13 },
+  hKg: { color: C.text, fontFamily: F.displayMed, fontSize: 15 },
+  hDiff: { width: 44, textAlign: 'right', fontFamily: F.bodySemi, fontSize: 12 },
+  barLabel: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
+  legendV: { fontFamily: F.display, fontSize: 18, letterSpacing: -0.4 },
+});

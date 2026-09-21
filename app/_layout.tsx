@@ -21,7 +21,7 @@ function Gate() {
     if (!ready) return;
     const top = segments[0] as string | undefined;
     if (!session && top !== 'login') router.replace('/login');
-    else if (session && !profile && top !== 'onboarding') router.replace('/onboarding');
+    else if (session && !profile && !(segments as string[]).includes('onboarding')) router.replace('/you/onboarding');
     else if (session && profile && top === 'login') router.replace('/');
   }, [ready, session, profile, segments, router]);
 
@@ -39,14 +39,6 @@ function Gate() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ title: 'Profile' }} />
-        <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
-        <Stack.Screen name="machine/[key]" options={{ title: '' }} />
-        <Stack.Screen name="session/[day]/[idx]" options={{ title: 'Edit session' }} />
-        <Stack.Screen name="workout/[day]/[idx]" options={{ title: 'Workout' }} />
-        <Stack.Screen name="custom-exercise" options={{ title: 'New exercise' }} />
-        <Stack.Screen name="food/add" options={{ title: 'Add food' }} />
-        <Stack.Screen name="nutrition" options={{ title: 'Targets' }} />
       </Stack>
       {!ready && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>

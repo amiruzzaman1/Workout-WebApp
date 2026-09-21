@@ -1,12 +1,12 @@
 import { useRouter } from 'expo-router';
 import { Switch, View } from 'react-native';
-import { ExerciseThumb } from '../../src/components/ExerciseAnimation';
-import { Button, Eyebrow, H1, ListRow, P, Screen, Section } from '../../src/components/ui';
-import { EquipmentKind, JETTS_NEWTOWN_TEMPLATE, MACHINES } from '../../src/data/machines';
-import { confirm } from '../../src/lib/confirm';
-import { getExercise } from '../../src/lib/exercises';
-import { useStore } from '../../src/lib/store';
-import { C } from '../../src/lib/theme';
+import { ExerciseThumb } from '../../../src/components/ExerciseAnimation';
+import { Button, Eyebrow, H1, ListRow, P, Screen, Section } from '../../../src/components/ui';
+import { EquipmentKind, JETTS_NEWTOWN_TEMPLATE, MACHINES } from '../../../src/data/machines';
+import { confirm } from '../../../src/lib/confirm';
+import { getExercise } from '../../../src/lib/exercises';
+import { useStore } from '../../../src/lib/store';
+import { C } from '../../../src/lib/theme';
 
 const SECTIONS: [EquipmentKind, string][] = [
   ['machine', 'Machines'],
@@ -38,7 +38,7 @@ export default function Machines() {
               return (
                 <ListRow
                   key={m.key}
-                  onPress={hasGuide ? () => router.push(`/machine/${m.key}`) : undefined}
+                  onPress={hasGuide ? () => router.push(`/library/machine/${m.key}`) : undefined}
                   left={demo ? <ExerciseThumb exercise={demo} /> : <View style={{ width: 52, height: 52, borderRadius: 4, backgroundColor: C.card2 }} />}
                   title={m.name}
                   subtitle={m.summary}

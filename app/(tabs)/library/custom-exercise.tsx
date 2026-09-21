@@ -1,10 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Text } from 'react-native';
-import { Button, Card, Chip, Input, Label, Row, Screen } from '../src/components/ui';
-import { MUSCLE_GROUPS, titleCase } from '../src/lib/exercises';
-import { useStore } from '../src/lib/store';
-import { C } from '../src/lib/theme';
+import { Button, Card, Chip, Input, Label, Row, Screen } from '../../../src/components/ui';
+import { MUSCLE_GROUPS, titleCase } from '../../../src/lib/exercises';
+import { useStore } from '../../../src/lib/store';
+import { C } from '../../../src/lib/theme';
 
 const MUSCLES = Object.values(MUSCLE_GROUPS).flat();
 const EQUIP = ['machine', 'cable', 'dumbbell', 'barbell', 'body only', 'kettlebells', 'bands', 'other'];

@@ -195,3 +195,50 @@ alter table public.profiles add column if not exists birth_date date;
 alter table public.profiles
   add column if not exists work_hours_week numeric(5,1),
   add column if not exists work_hours_by_day numeric(4,1)[];
+
+-- v7: timed exercises (planks, stretches, cardio) log seconds or minutes
+alter table public.workout_logs add column if not exists metric text not null default 'reps';
+alter table public.workout_logs drop constraint if exists workout_logs_metric_check;
+alter table public.workout_logs add constraint workout_logs_metric_check check (metric in ('reps','seconds','minutes'));
+
+-- v8: sleep and time tracking
+create table if not exists public.sleep_logs (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  night_of date not null,
+  bed_time text, wake_time text, minutes int, note text,
+  created_at timestamptz not null default now(),
+  primary key (user_id, night_of)
+);
+create table if not exists public.activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day date not null default current_date,
+  title text not null, description text, category text,
+  started_at timestamptz, ended_at timestamptz, minutes int,
+  created_at timestamptz not null default now()
+);
+create index if not exists activity_logs_user_day_idx on public.activity_logs (user_id, day);
+alter table public.sleep_logs enable row level security;
+alter table public.activity_logs enable row level security;
+drop policy if exists "own sleep" on public.sleep_logs;
+create policy "own sleep" on public.sleep_logs for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+drop policy if exists "own activity" on public.activity_logs;
+create policy "own activity" on public.activity_logs for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.sleep_logs, public.activity_logs to authenticated;
+
+-- v9: weight and waist history
+create table if not exists public.weight_logs (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day date not null default current_date,
+  kg numeric(5,1),
+  waist_cm numeric(5,1),
+  created_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+alter table public.weight_logs enable row level security;
+drop policy if exists "own weights" on public.weight_logs;
+create policy "own weights" on public.weight_logs for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.weight_logs to authenticated;

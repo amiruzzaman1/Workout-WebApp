@@ -41,4 +41,18 @@ export const A = {
   up: '#5fc08b',      // go heavier / on track
   down: '#e3b341',    // ease off
   over: '#e0796b',    // past the limit
+  core: '#d98fa8',    // rose
+  cardio: '#eb8f6a',  // warm orange
+};
+
+/** One colour per muscle group, used on exercise rows, plans and workouts. */
+export const GROUP_COLORS: Record<string, string> = {
+  Chest: A.protein,
+  Back: A.fibre,
+  Legs: A.carbs,
+  Shoulders: A.fat,
+  Arms: A.water,
+  Core: A.core,
+  Cardio: A.cardio,
+  Mobility: '#8a8a8a',
 };
