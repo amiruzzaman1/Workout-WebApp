@@ -122,7 +122,8 @@ export default function FoodScreen() {
         );
       })}
 
-      <Button kind="secondary" icon="body-outline" title="Your targets and body stats" onPress={() => router.push('/food/nutrition')} style={{ marginTop: 24 }} />
+      <Button kind="secondary" icon="restaurant-outline" tint={A.carbs} title="My recipes and usuals" onPress={() => router.push('/food/recipes')} style={{ marginTop: 24 }} />
+      <Button kind="secondary" icon="body-outline" title="Your targets and body stats" onPress={() => router.push('/food/nutrition')} style={{ marginTop: 10 }} />
       <P muted style={{ fontSize: 12 }}>Food data from Open Food Facts, an open database. Numbers are estimates, so check the label if something looks off.</P>
     </Screen>
   );

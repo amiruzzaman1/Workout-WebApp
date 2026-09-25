@@ -5,10 +5,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { dayLabel } from '../../../src/components/AppHeader';
 import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
+import { libToFood, searchLibrary } from '../../../src/lib/foodData';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, fmtAmount, Food, FoodEntry, MEAL_LABELS, MEALS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
+import { computeTargets, entryToFood, fmtAmount, Food, MEAL_LABELS, MEALS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
+import { foodToItem, recipeToFood } from '../../../src/lib/recipes';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
 
@@ -31,26 +33,10 @@ function sharedLabel(f: Food) {
   return `${f.shared.action === 'added' ? 'Added' : 'Edited'} by ${who}${f.shared.by === 'you' ? '' : ' \u26A0\uFE0F'}`;
 }
 
-/** Rebuilds a Food from a logged entry's saved totals, so picking it again scales from the same numbers. */
-function entryToFood(e: FoodEntry): Food {
-  const amount = Number(e.amount) || (e.unit === 'piece' ? 1 : 100);
-  const k = e.unit === 'piece' ? 1 / amount : 100 / amount;
-  return {
-    name: e.name, brand: e.brand, barcode: e.barcode,
-    kcal_100: Number(e.kcal) * k, protein_100: Number(e.protein_g) * k, carbs_100: Number(e.carbs_g) * k,
-    sugars_100: e.sugars_g == null ? null : Number(e.sugars_g) * k,
-    fat_100: Number(e.fat_g) * k,
-    sat_fat_100: e.sat_fat_g == null ? null : Number(e.sat_fat_g) * k,
-    fibre_100: e.fibre_g == null ? null : Number(e.fibre_g) * k,
-    sodium_100: e.sodium_mg == null ? null : Number(e.sodium_mg) * k,
-    serving_g: null, serving_label: e.serving_label, unit: e.unit, source: e.source,
-  };
-}
-
 export default function AddFood() {
-  const { meal: mealParam, date: dateParam, edit } = useLocalSearchParams<{ meal?: Meal; date?: string; edit?: string }>();
+  const { meal: mealParam, date: dateParam, edit, recipe: recipeParam } = useLocalSearchParams<{ meal?: Meal; date?: string; edit?: string; recipe?: string }>();
   const router = useRouter();
-  const { myFoods, foodEntries, addFoodEntry, updateFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, date: selectedDate } = useStore();
+  const { myFoods, foodEntries, addFoodEntry, updateFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, recipes, saveRecipe, date: selectedDate } = useStore();
   const date = dateParam ?? selectedDate;
   const editing = edit ? foodEntries.find((e) => e.id === edit) : undefined;
   const [meal, setMeal] = useState<Meal>(() => (MEALS.includes(mealParam as Meal) ? (mealParam as Meal) : (editing?.meal as Meal) ?? mealForNow()));
@@ -70,6 +56,13 @@ export default function AddFood() {
     if (!editing) return;
     setFood(entryToFood(editing));
   }, [edit]);
+
+  // Opened from My recipes with Log: go straight to the amount.
+  useEffect(() => {
+    if (!recipeParam) return;
+    const r = recipes.find((x) => x.id === recipeParam);
+    if (r) setFood(recipeToFood(r));
+  }, [recipeParam, recipes.length]);
 
   const recents = useMemo(() => {
     const seen = new Set<string>();
@@ -150,6 +143,15 @@ export default function AddFood() {
     return results.filter((f) => !known.has((f.name + (f.brand ?? '')).toLowerCase()));
   }, [results, local]);
 
+  // Your own recipes and usuals, then the built in South Asian dishes, Bangladeshi foods and ingredients.
+  const recipeHits = useMemo(() => {
+    const words = normText(q).split(/\s+/).filter(Boolean);
+    return recipes.filter((r) => !words.length || words.every((w) => normText(r.name).includes(w))).slice(0, words.length ? 6 : 4).map(recipeToFood);
+  }, [q, recipes]);
+  const dishHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['dish'], 6).map(libToFood) : []), [q]);
+  const bdHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['bangladesh'], 5).map(libToFood) : []), [q]);
+  const ingHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['ingredient'], 5).map(libToFood) : []), [q]);
+
   if (editShared) {
     return (
       <Screen>
@@ -182,7 +184,11 @@ export default function AddFood() {
         date={String(date)}
         initialAmount={editing ? Number(editing.amount) : undefined}
         onBack={() => (editing ? router.back() : setFood(null))}
-        onEdit={food.shared ? () => setEditShared(food) : undefined}
+        onEdit={food.recipe_id ? () => router.push(`/food/recipe?id=${food.recipe_id}`) : food.shared ? () => setEditShared(food) : undefined}
+        onSaveUsual={food.recipe_id ? undefined : async (amount, unit) => {
+          const saved = await saveRecipe({ name: `${food.name} (${fmtAmount(amount, unit, food.serving_label)})`, servings: 1, items: [foodToItem(food, amount, unit === 'piece' ? 'piece' : unit === 'ml' ? 'ml' : 'g')], notes: null });
+          return saved.name;
+        }}
         onSave={async (entry) => {
           if (editing) await updateFoodEntry(editing.id, { ...entry, meal });
           else await addFoodEntry({ ...entry, eaten_on: String(date), meal } as any);
@@ -237,6 +243,12 @@ export default function AddFood() {
               <Ionicons name="search" size={18} color={C.muted} style={{ position: 'absolute', left: 13, top: 15, zIndex: 1 }} />
               <Input value={q} onChangeText={setQ} placeholder="Search, e.g. weet-bix or pams tuna" autoFocus returnKeyType="search" style={{ paddingLeft: 40 }} accessibilityLabel="Search foods" />
             </View>
+            {recipeHits.length > 0 && (
+              <View style={st.panel}>
+                <Text style={st.panelLabel}>{q.trim() ? 'Your recipes and usuals' : 'My recipes and usuals'}</Text>
+                <FoodList foods={recipeHits} onPick={setFood} />
+              </View>
+            )}
             {sharedHits.length > 0 && (
               <View style={st.panel}>
                 <Text style={st.panelLabel}>{q.trim() ? 'User added foods' : 'Added or edited by you'}</Text>
@@ -249,13 +261,31 @@ export default function AddFood() {
                 <FoodList foods={local} onPick={setFood} />
               </View>
             )}
+            {dishHits.length > 0 && (
+              <View style={st.panel}>
+                <Text style={st.panelLabel}>South Asian dishes</Text>
+                <FoodList foods={dishHits} onPick={setFood} />
+              </View>
+            )}
+            {bdHits.length > 0 && (
+              <View style={st.panel}>
+                <Text style={st.panelLabel}>Bangladeshi foods</Text>
+                <FoodList foods={bdHits} onPick={setFood} />
+              </View>
+            )}
+            {ingHits.length > 0 && (
+              <View style={st.panel}>
+                <Text style={st.panelLabel}>Ingredients and spices</Text>
+                <FoodList foods={ingHits} onPick={setFood} />
+              </View>
+            )}
             {q.trim().length >= 3 && (online.length > 0 || busy) && (
               <View style={st.panel}>
                 <Text style={st.panelLabel}>Suggestions{busy ? ' · searching' : ''}</Text>
                 <FoodList foods={online} onPick={setFood} />
               </View>
             )}
-            {q.trim().length >= 3 && !busy && online.length === 0 && local.length === 0 && sharedHits.length === 0 && (
+            {q.trim().length >= 3 && !busy && online.length === 0 && local.length === 0 && sharedHits.length === 0 && recipeHits.length === 0 && dishHits.length === 0 && bdHits.length === 0 && ingHits.length === 0 && (
               <View style={st.note}>
                 <Text style={st.noteTitle}>{err ? 'Search is not working right now' : `Can't find "${q.trim()}"`} 👉👈🥺</Text>
                 <P muted style={{ fontSize: 13 }}>
@@ -265,19 +295,26 @@ export default function AddFood() {
                 <Button small kind="secondary" icon="add-circle-outline" tint={A.carbs} title="Add this food" onPress={() => setMode('quick')} style={{ alignSelf: 'flex-start' }} />
               </View>
             )}
-            <P muted style={{ fontSize: 12 }}>Products sold in New Zealand are listed first.</P>
+            <Row wrap style={{ gap: 8 }}>
+              <Button small kind="secondary" icon="restaurant-outline" tint={A.carbs} title="Build a recipe" onPress={() => router.push('/food/recipe')} />
+              <Button small kind="secondary" icon="book-outline" tint={A.carbs} title="My recipes" onPress={() => router.push('/food/recipes')} />
+            </Row>
+            <P muted style={{ fontSize: 12 }}>Products sold in New Zealand are listed first. South Asian dishes come from the Indian Nutrient Databank, Bangladeshi foods from the Food Composition Table for Bangladesh, and ingredients from USDA FoodData Central.</P>
           </View>
         )}
 
         {mode === 'mine' && (
           <View style={{ gap: 10 }}>
+            {recipes.length > 0 && <Label>Recipes and usuals</Label>}
+            <FoodList foods={recipes.map(recipeToFood)} onPick={setFood} />
+            <Button small kind="secondary" icon="restaurant-outline" tint={A.carbs} title="Build a recipe" onPress={() => router.push('/food/recipe')} style={{ alignSelf: 'flex-start' }} />
             {sharedFoods.some((f) => f.shared?.by === 'you') && <Label>Added or edited by you</Label>}
             <FoodList foods={sharedFoods.filter((f) => f.shared?.by === 'you')} onPick={setFood} />
             {myFoods.length > 0 && <Label>Saved foods</Label>}
             <FoodList foods={myFoods} onPick={setFood} />
             {recents.length > 0 && <Label>Recently eaten</Label>}
             <FoodList foods={recents} onPick={setFood} />
-            {myFoods.length === 0 && recents.length === 0 && !sharedFoods.some((f) => f.shared?.by === 'you') && <P muted>Foods you scan or add will show up here.</P>}
+            {myFoods.length === 0 && recents.length === 0 && recipes.length === 0 && !sharedFoods.some((f) => f.shared?.by === 'you') && <P muted>Foods you scan or add will show up here.</P>}
           </View>
         )}
 
@@ -501,8 +538,8 @@ function Seg<T extends string>({ value, onChange, options }: { value: T; onChang
 }
 
 function Portion({
-  food, meal, onMeal, date, initialAmount, onBack, onEdit, onSave,
-}: { food: Food; meal: Meal; onMeal: (m: Meal) => void; date: string; initialAmount?: number; onBack: () => void; onEdit?: () => void; onSave: (e: any) => Promise<void> }) {
+  food, meal, onMeal, date, initialAmount, onBack, onEdit, onSave, onSaveUsual,
+}: { food: Food; meal: Meal; onMeal: (m: Meal) => void; date: string; initialAmount?: number; onBack: () => void; onEdit?: () => void; onSave: (e: any) => Promise<void>; onSaveUsual?: (amount: number, unit: string) => Promise<string> }) {
   const { profile } = useStore();
   const t = computeTargets(profile as any);
   const isPiece = food.unit === 'piece';
@@ -512,6 +549,7 @@ function Portion({
   const [amount, setAmount] = useState(String(initialAmount ?? serving ?? (isPiece ? 1 : 100)));
   const [scaleUnit, setScaleUnit] = useState<'base' | 'big'>('base');
   const [busy, setBusy] = useState(false);
+  const [usual, setUsual] = useState<string | null>(null);
   const typed = Number(amount.replace(',', '.')) || 0;
   const qty = scaleUnit === 'big' ? typed * 1000 : typed; // the count (piece) or amount in g/ml (weight)
   const m = scaleFood(food, qty);
@@ -611,6 +649,13 @@ function Portion({
           } finally { setBusy(false); }
         }}
       />
+      {onSaveUsual && qty > 0 && (
+        <Button
+          kind="secondary" icon="bookmark-outline" tint={A.carbs} title="Save this amount as my usual"
+          onPress={async () => { setUsual(await onSaveUsual(qty, unit)); }}
+        />
+      )}
+      {!!usual && <P muted style={{ fontSize: 12 }}>Saved as "{usual}". Find it under My recipes and usuals.</P>}
       <Button kind="secondary" icon="arrow-back" title="Back" onPress={onBack} />
     </Screen>
   );

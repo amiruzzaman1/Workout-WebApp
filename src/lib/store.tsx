@@ -5,6 +5,7 @@ import { Exercise, setCustomExercises } from './exercises';
 import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
+import { Recipe } from './recipes';
 import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
 import { supabase } from './supabase';
 
@@ -45,6 +46,9 @@ type Store = {
   addActivity: (row: Omit<ActivityLog, 'id'>) => Promise<ActivityLog>;
   updateActivity: (id: string, ch: Partial<ActivityLog>) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
+  recipes: Recipe[];
+  saveRecipe: (r: Omit<Recipe, 'id'> & { id?: string }) => Promise<Recipe>;
+  deleteRecipe: (id: string) => Promise<void>;
   tasks: TaskItem[];
   addTask: (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => Promise<TaskItem>;
   updateTask: (id: string, ch: Partial<TaskItem>) => Promise<void>;
@@ -162,6 +166,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [weights, setWeights] = useState<WeightLog[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -179,10 +184,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setActivities([]);
       setWeights([]);
       setTasks([]);
+      setRecipes([]);
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt, sf, tk] = await Promise.all([
+    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt, sf, tk, rc] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', s.user.id).maybeSingle(),
       supabase.from('plans').select('id,name,data').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('custom_exercises').select('*').order('created_at'),
@@ -198,7 +204,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       supabase.from('weight_logs').select('day,kg,waist_cm').order('day', { ascending: true }).limit(2000),
       supabase.from('shared_foods').select('*').order('updated_at', { ascending: false }).limit(3000),
       supabase.from('tasks').select('id,day,title,category,target_minutes,done,done_at').gte('day', since).order('created_at', { ascending: true }).limit(3000),
+      supabase.from('recipes').select('id,name,servings,cooked_g,items,notes').order('updated_at', { ascending: false }).limit(500),
     ]);
+    setRecipes(((rc.data ?? []) as any[]).map((r) => ({ ...r, servings: Number(r.servings), cooked_g: r.cooked_g == null ? null : Number(r.cooked_g), items: r.items ?? [] })));
     setTasks((tk.data ?? []) as TaskItem[]);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
@@ -480,6 +488,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const saveRecipe = useCallback(async (r: Omit<Recipe, 'id'> & { id?: string }) => {
+    const row = { name: r.name, servings: r.servings, cooked_g: r.cooked_g ?? null, items: r.items, notes: r.notes ?? null, updated_at: new Date().toISOString() };
+    const q = r.id ? supabase.from('recipes').update(row).eq('id', r.id) : supabase.from('recipes').insert(row);
+    const { data, error } = await q.select('id,name,servings,cooked_g,items,notes').single();
+    if (error) throw new Error(error.message);
+    const saved = { ...(data as any), servings: Number((data as any).servings), cooked_g: (data as any).cooked_g == null ? null : Number((data as any).cooked_g) } as Recipe;
+    setRecipes((l) => [saved, ...l.filter((x) => x.id !== saved.id)]);
+    return saved;
+  }, []);
+
+  const deleteRecipe = useCallback(async (id: string) => {
+    setRecipes((l) => l.filter((r) => r.id !== id));
+    const { error } = await supabase.from('recipes').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
   // A timer started on another device shows up here when the app comes back to the front.
   const refreshActivities = useCallback(async () => {
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
@@ -513,7 +537,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
-    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, refreshActivities, weights, logWeight, deleteWeight,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

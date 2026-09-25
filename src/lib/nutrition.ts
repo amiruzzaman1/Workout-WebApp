@@ -280,6 +280,10 @@ export type Food = {
   unit?: string; // "g", "ml", or "piece" for a food counted whole (a kebab, a slice, a can)
   source?: string | null;
   shared?: SharedMeta;
+  /** Household measures for the built in ingredients: d is grams in 1 ml, pc is grams in 1 piece. */
+  measures?: { d?: number; pc?: number };
+  /** Set on a food made from one of your recipes, so the portion screen can offer to edit it. */
+  recipe_id?: string;
 };
 
 export type FoodEntry = {
@@ -334,6 +338,22 @@ export function fmtAmount(amount: number, unit: string, singular?: string | null
   if (unit !== 'piece') return `${round(amount)} ${unit}`;
   const word = (singular || 'piece').replace(/^\d+\s*/, '');
   return amount === 1 ? `1 ${word}` : `${round(amount, 2)} ${/s$/i.test(word) ? word : `${word}s`}`;
+}
+
+/** Rebuilds a Food from a logged entry's saved totals, so picking it again scales from the same numbers. */
+export function entryToFood(e: FoodEntry): Food {
+  const amount = Number(e.amount) || (e.unit === 'piece' ? 1 : 100);
+  const k = e.unit === 'piece' ? 1 / amount : 100 / amount;
+  return {
+    name: e.name, brand: e.brand, barcode: e.barcode,
+    kcal_100: Number(e.kcal) * k, protein_100: Number(e.protein_g) * k, carbs_100: Number(e.carbs_g) * k,
+    sugars_100: e.sugars_g == null ? null : Number(e.sugars_g) * k,
+    fat_100: Number(e.fat_g) * k,
+    sat_fat_100: e.sat_fat_g == null ? null : Number(e.sat_fat_g) * k,
+    fibre_100: e.fibre_g == null ? null : Number(e.fibre_g) * k,
+    sodium_100: e.sodium_mg == null ? null : Number(e.sodium_mg) * k,
+    serving_g: null, serving_label: e.serving_label, unit: e.unit, source: e.source,
+  };
 }
 
 export function totals(entries: FoodEntry[]) {
