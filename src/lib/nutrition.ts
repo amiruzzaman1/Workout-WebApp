@@ -64,6 +64,10 @@ export type Targets = {
   fibre?: number;
   water?: number;
   rationale?: string;
+  /** Upper limits, not goals to hit: staying under these is the healthy range, unlike protein or fibre. */
+  sugars?: number;
+  satFat?: number;
+  sodium?: number;
 };
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -203,6 +207,12 @@ export function computeTargets(p: (Profile & Body) | null): Targets {
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   const fibre = Math.round((kcal / 1000) * 14);
   const water = p.water_goal_ml ?? Math.round((w * 35 + sessions * 70 + (workHours / 7) * 60) / 100) * 100;
+  // Sugars and saturated fat: WHO/NZ guidance caps free sugars and saturated fat at about 10% of calories
+  // each, so these scale with your own calorie target. Sodium is a flat population safety limit (NZ Ministry
+  // of Health, about 2300 mg a day for an adult) that does not change with body size or calorie target.
+  const sugars = Math.round((kcal * 0.1) / 4);
+  const satFat = Math.round((kcal * 0.1) / 9);
+  const sodium = 2300;
 
   const tips: string[] = [];
   if (recomp) {
@@ -227,7 +237,7 @@ export function computeTargets(p: (Profile & Body) | null): Targets {
   return {
     ready: true, age, bmi, bmiLabel: bmiLabel(bmi), goalNote, tips,
     healthyRange: [Math.round(18.5 * m * m * 10) / 10, Math.round(24.9 * m * m * 10) / 10],
-    bmr, tdee, kcal, protein, carbs, fat, fibre, water, rationale, workKcal, trainKcal, workHours,
+    bmr, tdee, kcal, protein, carbs, fat, fibre, water, sugars, satFat, sodium, rationale, workKcal, trainKcal, workHours,
     direction, weeklyKg: Math.round(weeklyKg * 100) / 100, weeksToGoal, goalDate,
   };
 }
@@ -267,7 +277,7 @@ export type Food = {
   sodium_100?: number | null; // mg per 100 g
   serving_g?: number | null;
   serving_label?: string | null;
-  unit?: string; // g or ml
+  unit?: string; // "g", "ml", or "piece" for a food counted whole (a kebab, a slice, a can)
   source?: string | null;
   shared?: SharedMeta;
 };
@@ -299,9 +309,13 @@ export const MEAL_LABELS: Record<Meal, string> = { breakfast: 'Breakfast', lunch
 
 const n = (v: any) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
-/** Scale a food's per-100 values to an amount in grams/ml. */
-export function scaleFood(f: Food, grams: number) {
-  const k = grams / 100;
+/**
+ * Scale a food's numbers to how much of it you had. For "g" or "ml" foods, `kcal_100` and friends are per
+ * 100 of that unit, so the factor is amount/100. For a "piece" food (a kebab, a slice, a can), those same
+ * fields hold the numbers for one whole piece, so the factor is just the count, e.g. 1.5 pieces.
+ */
+export function scaleFood(f: Food, amount: number) {
+  const k = f.unit === 'piece' ? amount : amount / 100;
   const r = (v: number | null | undefined, d = 1) => (v == null ? null : Math.round(v * k * 10 ** d) / 10 ** d);
   return {
     kcal: Math.round((f.kcal_100 ?? 0) * k),
@@ -313,6 +327,13 @@ export function scaleFood(f: Food, grams: number) {
     fibre_g: r(f.fibre_100),
     sodium_mg: r(f.sodium_100, 0),
   };
+}
+
+/** Turns a logged amount back into "2" or "2 pieces" or "150 g", for showing in a list. */
+export function fmtAmount(amount: number, unit: string, singular?: string | null) {
+  if (unit !== 'piece') return `${round(amount)} ${unit}`;
+  const word = (singular || 'piece').replace(/^\d+\s*/, '');
+  return amount === 1 ? `1 ${word}` : `${round(amount, 2)} ${/s$/i.test(word) ? word : `${word}s`}`;
 }
 
 export function totals(entries: FoodEntry[]) {

@@ -3,9 +3,10 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { dayLabel } from '../../../src/components/AppHeader';
+import { NutrientMini } from '../../../src/components/NutrientMini';
 import { Button, Card, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, Section, smooth, usePageWidth, useTip } from '../../../src/components/ui';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, FoodEntry, MEAL_LABELS, MEALS, round, totals } from '../../../src/lib/nutrition';
+import { computeTargets, fmtAmount, FoodEntry, MEAL_LABELS, MEALS, round, totals } from '../../../src/lib/nutrition';
 import { todayISO } from '../../../src/lib/progress';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
@@ -54,10 +55,10 @@ export default function FoodScreen() {
           </Row>
 
           <Row wrap style={{ marginTop: 12, gap: 14 }}>
-            <Mini label="Fibre" v={`${round(sum.fibre)} / ${t.fibre} g`} color={A.fibre} />
-            <Mini label="Sugars" v={`${round(sum.sugars)} g`} color={A.carbs} />
-            <Mini label="Sat fat" v={`${round(sum.satFat)} g`} color={A.fat} />
-            <Mini label="Sodium" v={`${round(sum.sodium)} mg`} />
+            <NutrientMini label="Fibre" value={sum.fibre} target={t.fibre} unit="g" color={A.fibre} />
+            <NutrientMini label="Sugars" value={sum.sugars} target={t.sugars} unit="g" color={A.carbs} limit />
+            <NutrientMini label="Sat fat" value={sum.satFat} target={t.satFat} unit="g" color={A.fat} limit />
+            <NutrientMini label="Sodium" value={sum.sodium} target={t.sodium} unit="mg" color={A.over} limit />
           </Row>
         </>
       ) : (
@@ -153,7 +154,7 @@ function EntryRow({ e, onPress, onDelete }: { e: FoodEntry; onPress: () => void;
       <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`Edit ${e.name}`} style={(p) => [{ flex: 1, borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
         <Text style={st.entryName} numberOfLines={1}>{e.name}</Text>
         <Text style={st.meta} numberOfLines={1}>
-          {e.brand ? `${e.brand} · ` : ''}{round(e.amount)} {e.unit}
+          {e.brand ? `${e.brand} · ` : ''}{fmtAmount(e.amount, e.unit, e.serving_label)}
           {' · '}P {round(e.protein_g)} C {round(e.carbs_g)} F {round(e.fat_g)}
         </Text>
       </Pressable>
@@ -189,18 +190,6 @@ function Macro({ label, value, target, color }: { label: string; value: number; 
       <HoverTip align="start" lines={[`${label}: ${Math.round(value)} of ${target} g`, `${Math.round(target ? (value / target) * 100 : 0)}% of your goal`]}>
         <View style={st.track}><View style={[st.fill, { width: `${pct * 100}%`, backgroundColor: color }]} /></View>
       </HoverTip>
-    </View>
-  );
-}
-
-function Mini({ label, v, color }: { label: string; v: string; color?: string }) {
-  return (
-    <View>
-      <Row style={{ gap: 5 }}>
-        {!!color && <View style={[st.dot, { backgroundColor: color }]} />}
-        <Text style={st.macroLabel}>{label}</Text>
-      </Row>
-      <Text style={{ color: C.text, fontFamily: F.bodyMed, fontSize: 13 }}>{v}</Text>
     </View>
   );
 }

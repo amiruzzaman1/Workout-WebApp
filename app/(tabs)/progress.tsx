@@ -14,7 +14,7 @@ import { metricFor } from '../../src/lib/planner';
 import { fmtDuration, fmtWeight, secondsByDate, sessionsFor, suggest, todayISO, visitSeconds, workingWeight } from '../../src/lib/progress';
 import { useStore } from '../../src/lib/store';
 import { A, C, F, R } from '../../src/lib/theme';
-import { ACTIVITY_CATEGORIES, fmtMinutes, isTime } from '../../src/lib/tracker';
+import { ACTIVITY_CATEGORIES, fmt12, fmtMinutes, isTime } from '../../src/lib/tracker';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -426,7 +426,7 @@ function avgClock(times: string[]) {
   for (const t of times) { const a = (clockToMin(t) / 1440) * 2 * Math.PI; sx += Math.cos(a); sy += Math.sin(a); }
   let a = Math.atan2(sy, sx); if (a < 0) a += 2 * Math.PI;
   const m = Math.round((a / (2 * Math.PI)) * 1440) % 1440;
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return fmt12(`${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`);
 }
 
 function SleepTab() {
@@ -437,7 +437,7 @@ function SleepTab() {
     const d = shift(today, -i);
     const s = sleep.find((x) => x.night_of === d);
     const m = s?.minutes ?? 0;
-    nights.push({ label: nice(d), value: Math.round((m / 60) * 10) / 10, caption: `${nice(d, true)}: ${m ? `${fmtMinutes(m)}${s?.bed_time ? `, ${s.bed_time} to ${s.wake_time}` : ''}` : 'not logged'}` });
+    nights.push({ label: nice(d), value: Math.round((m / 60) * 10) / 10, caption: `${nice(d, true)}: ${m ? `${fmtMinutes(m)}${s?.bed_time ? `, ${fmt12(s.bed_time)} to ${fmt12(s.wake_time)}` : ''}` : 'not logged'}` });
   }
   const recent = sleep.filter((s) => s.night_of >= shift(today, -13) && s.minutes);
   const avgMin = recent.length ? Math.round(recent.reduce((a, s) => a + (s.minutes ?? 0), 0) / recent.length) : 0;

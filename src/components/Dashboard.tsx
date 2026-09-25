@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { computeTargets, totals } from '../lib/nutrition';
+import { NutrientMini } from './NutrientMini';
 import { fmtDuration, secondsByDate, todayISO } from '../lib/progress';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
@@ -164,7 +165,15 @@ export function Dashboard({ date, weekDone, weekPlanned, streak }: {
           <Nutrient value={ml / 1000} target={waterGoal / 1000} color={A.water} size={ringL} big={(ml / 1000).toFixed(2)} label="water L" unit="L" decimals={1} align="end" />
         </View>
         {targets.ready ? (
-          <Text style={d.goalsNote}>{`Goals: ${kcalTarget.toLocaleString()} kcal and ${(waterGoal / 1000).toFixed(1)} L of water a day.`}</Text>
+          <>
+            <Text style={d.goalsNote}>{`Goals: ${kcalTarget.toLocaleString()} kcal and ${(waterGoal / 1000).toFixed(1)} L of water a day.`}</Text>
+            <View style={d.nutrientRow}>
+              <NutrientMini label="Fibre" value={eaten.fibre} target={targets.fibre} unit="g" color={A.fibre} />
+              <NutrientMini label="Sugars" value={eaten.sugars} target={targets.sugars} unit="g" color={A.carbs} limit />
+              <NutrientMini label="Sat fat" value={eaten.satFat} target={targets.satFat} unit="g" color={A.fat} limit />
+              <NutrientMini label="Sodium" value={eaten.sodium} target={targets.sodium} unit="mg" color={A.over} limit />
+            </View>
+          </>
         ) : (
           // Only shown until height, weight, sex and date of birth are saved.
           <View style={d.setup}>
@@ -229,6 +238,7 @@ const d = StyleSheet.create({
   setupTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 15 },
   left: { color: C.muted, fontFamily: F.bodyMed, fontSize: 12 },
   goalsNote: { color: C.text, fontFamily: F.bodyMed, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  nutrientRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 14 },
   summaryNote: { color: C.muted, fontFamily: F.body, fontSize: 12, textAlign: 'center' },
   actions: { flexDirection: 'row', justifyContent: 'center', gap: 8, flexWrap: 'wrap' },
   timer: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderWidth: 1, borderRadius: R.lg, paddingVertical: 12, paddingHorizontal: 16 },

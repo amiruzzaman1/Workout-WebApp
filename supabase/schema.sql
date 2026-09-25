@@ -302,3 +302,22 @@ grant select, insert, update, delete on public.shared_foods to authenticated;
 -- v11: time tracker. Each task keeps every block of time (from and to) so a task can be continued, and you can add your own categories.
 alter table public.activity_logs add column if not exists segments jsonb not null default '[]'::jsonb;
 alter table public.profiles add column if not exists time_categories text[];
+
+-- v12: planned tasks for a day. They show as suggestions in the time tracker, and can be ticked off on the Tasks page (they stay, shown struck through).
+create table if not exists public.tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day date not null default current_date,
+  title text not null,
+  category text,
+  target_minutes int,
+  done boolean not null default false,
+  done_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists tasks_user_day_idx on public.tasks (user_id, day);
+alter table public.tasks enable row level security;
+drop policy if exists "own tasks" on public.tasks;
+create policy "own tasks" on public.tasks for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.tasks to authenticated;

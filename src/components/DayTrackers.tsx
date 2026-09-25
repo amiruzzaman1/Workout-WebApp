@@ -7,9 +7,10 @@ import { fmtDuration, todayISO, visitSeconds } from '../lib/progress';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
 import {
-  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmtMinutes, isTime, minutesBetween, nowClock, rangeText, Segment, segmentsOf, sleepVerdict,
+  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmt12, fmtMinutes, hhmmOf, isTime, minutesBetween, nowClock, rangeText, Segment, segmentsOf, sleepVerdict,
 } from '../lib/tracker';
 import { dayLabel } from './AppHeader';
+import { TimeField } from './TimeField';
 import { AccentTile, Button, Chip, hovered, Input, Label, P, Row, Section, smooth } from './ui';
 
 export const CAT_COLORS: Record<string, string> = {
@@ -135,7 +136,7 @@ export function SleepCard({ date }: { date: string }) {
         <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <View>
             <Text style={[st.big, { color: A.fat }]}>{fmtMinutes(savedMins)}</Text>
-            <Text style={st.meta}>{saved?.bed_time} to {saved?.wake_time}. {verdict?.hint}</Text>
+            <Text style={st.meta}>{fmt12(saved?.bed_time)} to {fmt12(saved?.wake_time)}. {verdict?.hint}</Text>
           </View>
           <Text style={[st.badge, { color: A.fat, borderColor: A.fat }]}>{verdict?.label}</Text>
         </Row>
@@ -147,18 +148,18 @@ export function SleepCard({ date }: { date: string }) {
           <Row style={{ gap: 10 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Label>Went to bed</Label>
-              <Input value={bed} onChangeText={(t) => setBed(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="22:45" keyboardType="numbers-and-punctuation" />
+              <TimeField value={bed} onChange={setBed} placeholder="10:45" />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Label>Woke up</Label>
-              <Input value={wake} onChangeText={(t) => setWake(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="06:30" keyboardType="numbers-and-punctuation" />
+              <TimeField value={wake} onChange={setWake} placeholder="6:30" />
             </View>
           </Row>
           <Row wrap style={{ gap: 6 }}>
             <Chip label="Bed now" icon={() => <Ionicons name="bed-outline" size={15} color={C.muted} />} onPress={() => setBed(nowClock())} />
             <Chip label="Woke now" icon={() => <Ionicons name="sunny-outline" size={15} color={C.muted} />} onPress={() => setWake(nowClock())} />
           </Row>
-          <Text style={st.meta}>{mins ? `That is ${fmtMinutes(mins)} of sleep.` : 'Use 24 hour time, for example 23:15.'}</Text>
+          <Text style={st.meta}>{mins ? `That is ${fmtMinutes(mins)} of sleep.` : 'Type the time, then pick AM or PM, for example 11:15 PM.'}</Text>
           <Button small icon="checkmark" title="Save sleep" onPress={save} style={{ alignSelf: 'flex-start' }} />
         </View>
       )}
@@ -199,7 +200,7 @@ const key = (s: string) => s.trim().toLowerCase();
  * time, or type minutes. The same task on the same day keeps adding to one entry, and any entry can be continued.
  */
 export function TimeTrackerCard({ date }: { date: string }) {
-  const { activities, addActivity, updateActivity, deleteActivity, visits } = useStore();
+  const { activities, addActivity, updateActivity, deleteActivity, visits, tasks } = useStore();
   const { running, seconds } = useRunningTimer();
   const { categories, addCategory } = useTimeCategories();
   const isToday = date === todayISO();
@@ -212,6 +213,7 @@ export function TimeTrackerCard({ date }: { date: string }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [mins, setMins] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -234,11 +236,18 @@ export function TimeTrackerCard({ date }: { date: string }) {
   }, [activities, cat]);
 
   const q = key(title);
+  // Tasks planned for this day come first (not done, then done), then names used before in this category.
+  const planned = useMemo(() => {
+    const day = tasks.filter((t) => t.day === date && key(t.title) !== q && (!q || key(t.title).includes(q)));
+    return [...day.filter((t) => !t.done), ...day.filter((t) => t.done)].slice(0, 4);
+  }, [tasks, date, q]);
   const suggestions = useMemo(() => {
-    if (!q) return names.slice(0, 5);
-    const hits = names.filter((n) => key(n).includes(q) && key(n) !== q);
-    return [...hits.filter((n) => key(n).startsWith(q)), ...hits.filter((n) => !key(n).startsWith(q))].slice(0, 5);
-  }, [names, q]);
+    const taken = new Set(planned.map((t) => key(t.title)));
+    const rest = names.filter((n) => !taken.has(key(n)));
+    if (!q) return rest.slice(0, Math.max(1, 5 - planned.length));
+    const hits = rest.filter((n) => key(n).includes(q) && key(n) !== q);
+    return [...hits.filter((n) => key(n).startsWith(q)), ...hits.filter((n) => !key(n).startsWith(q))].slice(0, Math.max(1, 5 - planned.length));
+  }, [names, q, planned]);
 
   // The same task, same category, same day: new time is added to it instead of starting another entry.
   const findSame = () => (q ? activities.find((a) => a.day === date && (a.category ?? 'Other') === cat && key(a.title) === q) : undefined);
@@ -282,7 +291,7 @@ export function TimeTrackerCard({ date }: { date: string }) {
 
   const addRange = () => run(async () => {
     if (!title.trim()) throw new Error('Type what you did first.');
-    if (!isTime(from) || !isTime(to)) throw new Error('Enter both times in 24 hour time, for example 14:30.');
+    if (!isTime(from) || !isTime(to)) throw new Error('Enter both times, with AM or PM, for example 2:30 PM.');
     const m = minutesBetween(from, to);
     if (!m) throw new Error('The end time must be after the start time.');
     const s = new Date(`${date}T${from.trim().padStart(5, '0')}:00`);
@@ -363,9 +372,16 @@ export function TimeTrackerCard({ date }: { date: string }) {
 
         <Label>What are you doing?</Label>
         <Input value={title} onChangeText={setTitle} placeholder="e.g. WorkoutApp, chapter 3, gym admin" autoCapitalize="sentences" />
-        {suggestions.length > 0 && (
+        {(suggestions.length > 0 || planned.length > 0) && (
           <View>
-            <Text style={st.panelLabel}>{q ? 'Suggestions' : `Recent in ${cat}`}</Text>
+            <Text style={st.panelLabel}>{q ? 'Suggestions' : planned.length ? 'Planned and recent' : `Recent in ${cat}`}</Text>
+            {planned.map((t) => (
+              <Pressable key={t.id} onPress={() => { setTitle(t.title); if (t.category && categories.includes(t.category)) setCat(t.category); }} style={(p) => [st.suggest, smooth, (p.pressed || hovered(p)) && { backgroundColor: C.card2 }]} accessibilityRole="button" accessibilityLabel={`Planned task ${t.title}`}>
+                <Ionicons name={t.done ? 'checkbox' : 'square-outline'} size={16} color={t.done ? C.faint : catColor(t.category)} />
+                <Text style={[st.suggestText, t.done && { color: C.faint, textDecorationLine: 'line-through' }]} numberOfLines={1}>{t.title}</Text>
+                <Text style={st.plannedTag}>Planned</Text>
+              </Pressable>
+            ))}
             {suggestions.map((n) => (
               <Pressable key={n} onPress={() => setTitle(n)} style={(p) => [st.suggest, smooth, (p.pressed || hovered(p)) && { backgroundColor: C.card2 }]} accessibilityRole="button">
                 <Text style={st.suggestText} numberOfLines={1}>{n}</Text>
@@ -396,18 +412,18 @@ export function TimeTrackerCard({ date }: { date: string }) {
             <Row style={{ gap: 10 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Label>From</Label>
-                <Input value={from} onChangeText={(t) => setFrom(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="14:00" keyboardType="numbers-and-punctuation" />
+                <TimeField value={from} onChange={setFrom} placeholder="2:00" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Label>To</Label>
-                <Input value={to} onChangeText={(t) => setTo(t.replace(/[^0-9:]/g, '').slice(0, 5))} placeholder="15:00" keyboardType="numbers-and-punctuation" />
+                <TimeField value={to} onChange={setTo} placeholder="3:00" />
               </View>
             </Row>
             <Row wrap style={{ gap: 6 }}>
               <Chip label="From now" icon={() => <Ionicons name="time-outline" size={15} color={C.muted} />} onPress={() => setFrom(nowClock())} />
               <Chip label="To now" icon={() => <Ionicons name="time-outline" size={15} color={C.muted} />} onPress={() => setTo(nowClock())} />
             </Row>
-            <Text style={st.meta}>{rangeMins ? `That is ${fmtMinutes(rangeMins)}.` : 'Use 24 hour time, for example 14:30.'}</Text>
+            <Text style={st.meta}>{rangeMins ? `That is ${fmtMinutes(rangeMins)}.` : 'Type the time, then pick AM or PM, for example 2:30 PM.'}</Text>
             <Button icon="add" title="Add time" onPress={addRange} loading={busy} />
           </View>
         )}
@@ -428,12 +444,23 @@ export function TimeTrackerCard({ date }: { date: string }) {
       <Section title={dayLabel(date)} icon="list" color={A.core} right={<Text style={st.meta}>{total > 0 ? `${fmtMinutes(total)} tracked` : 'nothing yet'}</Text>}>
         <View>
           {dayEntries.map((a) => (
-            <ActivityRow
-              key={a.id}
-              a={a}
-              onContinue={isToday && !running ? () => continueTask(a) : undefined}
-              onDelete={() => removeEntry(a)}
-            />
+            editing === a.id ? (
+              <EditEntry
+                key={a.id}
+                a={a}
+                categories={categories}
+                onCancel={() => setEditing(null)}
+                onSave={async (ch) => { await updateActivity(a.id, ch); setEditing(null); }}
+              />
+            ) : (
+              <ActivityRow
+                key={a.id}
+                a={a}
+                onContinue={isToday && !running ? () => continueTask(a) : undefined}
+                onEdit={() => setEditing(a.id)}
+                onDelete={() => removeEntry(a)}
+              />
+            )
           ))}
           {gym.map((v) => (
             <View key={v.id} style={[st.row, { borderTopColor: A.up }]}>
@@ -522,12 +549,84 @@ export function TimeChart({ slices }: { slices: Slice[] }) {
   );
 }
 
-function ActivityRow({ a, onContinue, onDelete }: { a: ActivityLog; onContinue?: () => void; onDelete: () => void }) {
+/**
+ * Edit one finished entry in place: its name, its category, and each block of time (from and to). Minutes that
+ * were added without times (the Minutes option) stay as a separate number. Saving rebuilds the total from the blocks.
+ */
+function EditEntry({ a, categories, onCancel, onSave }: { a: ActivityLog; categories: string[]; onCancel: () => void; onSave: (ch: Partial<ActivityLog>) => Promise<void> }) {
+  const col = catColor(a.category);
+  const segs = segmentsOf(a);
+  const segTotal = segs.reduce((sum, x) => sum + Math.max(0, Math.round((new Date(x.e).getTime() - new Date(x.s).getTime()) / 60000)), 0);
+  const [title, setTitle] = useState(a.title);
+  const [cat, setCat] = useState(a.category ?? 'Other');
+  const [blocks, setBlocks] = useState(segs.map((x) => ({ from: hhmmOf(x.s), to: hhmmOf(x.e) })));
+  const [extra, setExtra] = useState(String(Math.max(0, (a.minutes ?? 0) - segTotal)));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const setBlock = (i: number, k: 'from' | 'to') => (v: string) => setBlocks((b) => b.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+
+  async function save() {
+    setError(null);
+    if (!title.trim()) return setError('Type what you did.');
+    const out: Segment[] = [];
+    let total = Math.round(Number(extra.replace(',', '.'))) || 0;
+    for (const b of blocks) {
+      if (!isTime(b.from) || !isTime(b.to)) return setError('Every block needs a start and an end time, with AM or PM.');
+      const m = minutesBetween(b.from, b.to);
+      if (!m) return setError('Each end time must be after its start time, and under 16 hours.');
+      const s = new Date(`${a.day}T${b.from.trim().padStart(5, '0')}:00`);
+      out.push({ s: s.toISOString(), e: new Date(s.getTime() + m * 60000).toISOString() });
+      total += m;
+    }
+    if (total <= 0) return setError('Add some time, or delete the entry.');
+    setBusy(true);
+    try {
+      await onSave({ title: title.trim(), category: cat, minutes: total, segments: out, started_at: out[0]?.s ?? null, ended_at: out.length ? out[out.length - 1].e : null });
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save. Check your connection and try again.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={[st.row, st.editBox, { borderTopColor: col }]}>
+      <Label>Name</Label>
+      <Input value={title} onChangeText={setTitle} />
+      <Label>Category</Label>
+      <Row wrap style={{ gap: 6 }}>
+        {categories.map((c) => <Chip key={c} label={c} dot={catColor(c)} active={cat === c} onPress={() => setCat(c)} />)}
+      </Row>
+      {blocks.map((b, i) => (
+        <View key={i} style={{ gap: 4 }}>
+          <Row style={{ justifyContent: 'space-between' }}>
+            <Label>{blocks.length > 1 ? `Block ${i + 1}` : 'Time'}</Label>
+            <Pressable onPress={() => setBlocks((x) => x.filter((_, j) => j !== i))} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Remove block ${i + 1}`} style={(p) => [{ padding: 4, borderRadius: 999, marginTop: 14 }, smooth, hovered(p) && { backgroundColor: A.over + '22' }]}>
+              {(p: any) => <Ionicons name="trash-outline" size={15} color={hovered(p) ? A.over : C.faint} />}
+            </Pressable>
+          </Row>
+          <Row style={{ gap: 10, alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, minWidth: 0 }}><Text style={st.meta}>From</Text><TimeField value={b.from} onChange={setBlock(i, 'from')} /></View>
+            <View style={{ flex: 1, minWidth: 0 }}><Text style={st.meta}>To</Text><TimeField value={b.to} onChange={setBlock(i, 'to')} /></View>
+          </Row>
+        </View>
+      ))}
+      <Label>{blocks.length ? 'Extra minutes without times' : 'Minutes'}</Label>
+      <Input value={extra} onChangeText={(t) => setExtra(t.replace(/[^0-9]/g, ''))} keyboardType="number-pad" />
+      {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
+      <Row style={{ gap: 8, marginTop: 8 }}>
+        <Button small icon="checkmark" title="Save" onPress={save} loading={busy} />
+        <Button small kind="secondary" title="Cancel" onPress={onCancel} />
+      </Row>
+    </View>
+  );
+}
+
+function ActivityRow({ a, onContinue, onEdit, onDelete }: { a: ActivityLog; onContinue?: () => void; onEdit: () => void; onDelete: () => void }) {
   const col = catColor(a.category);
   const ranges = rangeText(segmentsOf(a));
   return (
-    <View style={[st.row, { borderTopColor: col }]}>
-      <View style={{ flex: 1 }}>
+    <View style={[st.row, { borderTopColor: col, flexWrap: 'wrap' }]}>
+      <View style={{ flexGrow: 1, flexBasis: 150, minWidth: 0 }}>
         <Text style={st.rowTitle} numberOfLines={1}>{a.title}</Text>
         <Text style={st.meta} numberOfLines={2}>{a.category ?? 'Other'}{ranges ? ` · ${ranges}` : ''}</Text>
       </View>
@@ -537,6 +636,9 @@ function ActivityRow({ a, onContinue, onDelete }: { a: ActivityLog; onContinue?:
           <Ionicons name="play-circle-outline" size={24} color={col} />
         </Pressable>
       )}
+      <Pressable onPress={onEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Edit ${a.title}`} style={(p) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: col + '22' }]}>
+        {(p: any) => <Ionicons name="create-outline" size={17} color={hovered(p) ? col : C.faint} />}
+      </Pressable>
       <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${a.title}`} style={(p) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: A.over + '22' }]}>
         {(p: any) => <Ionicons name="trash-outline" size={16} color={hovered(p) ? A.over : C.faint} />}
       </Pressable>
@@ -557,12 +659,13 @@ const st = StyleSheet.create({
   form: { backgroundColor: C.card, borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.lg, padding: 16, gap: 10 },
   panelLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', marginBottom: 2 },
   suggest: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  plannedTag: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase' },
   suggestText: { flex: 1, color: C.text, fontFamily: F.bodyMed, fontSize: 15 },
   seg: { flexDirection: 'row', borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, overflow: 'hidden', marginTop: 4 },
   segItem: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 3 },
   segDivider: { borderLeftWidth: 1, borderLeftColor: C.borderStrong },
   segOn: { backgroundColor: C.inverse },
-  segText: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
+  segText: { color: C.text, fontFamily: F.bodySemi, fontSize: 12 },
   chart: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: R.lg, padding: 16, gap: 14 },
   chartTitle: { color: C.muted, fontFamily: F.bodySemi, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase' },
   chartBody: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 20 },
@@ -571,6 +674,7 @@ const st = StyleSheet.create({
   legendDot: { width: 10, height: 10, borderRadius: 3 },
   legendName: { flex: 1, color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   legendTime: { color: C.text, fontFamily: F.bodyMed, fontSize: 13 },
+  editBox: { flexDirection: 'column', alignItems: 'stretch', gap: 2, paddingBottom: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.border, borderTopWidth: 2 },
   rowTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   rowTime: { fontFamily: F.displayMed, fontSize: 14 },

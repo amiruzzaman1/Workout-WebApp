@@ -207,6 +207,17 @@ export default function Nutrition() {
             </View>
           </Section>
 
+          <Section title="Stay under" icon="shield-checkmark-outline" color={A.over}>
+            <P muted style={{ fontSize: 13 }}>
+              These three are the other way round from protein or fibre: staying under them is the healthy range, not a goal to hit.
+            </P>
+            <View style={{ marginTop: 6 }}>
+              <Line k="Sugars" c={A.carbs} v={`under ${t.sugars} g`} why="About 10% of your calories. Mostly added sugar in drinks, lollies and baking, not what's naturally in fruit or milk." />
+              <Line k="Saturated fat" c={A.fat} v={`under ${t.satFat} g`} why="About 10% of your calories. Fatty meat, butter, cream, most fried food and baking." />
+              <Line k="Sodium" c={A.over} v={`under ${t.sodium} mg`} why="A flat limit either way, around 1 rounded teaspoon of salt a day. Mostly bread, sauces, processed and takeaway food, not how much you weigh." />
+            </View>
+          </Section>
+
           {t.tips && t.tips.length > 0 && (
             <Section title="For your goal" icon="flag" color={A.up}>
               <View>

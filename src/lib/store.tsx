@@ -5,7 +5,7 @@ import { Exercise, setCustomExercises } from './exercises';
 import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
-import { ActivityLog, SleepLog, WeightLog } from './tracker';
+import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
 import { supabase } from './supabase';
 
 type PlanRow = { id: string; name: string; data: PlanData };
@@ -45,6 +45,10 @@ type Store = {
   addActivity: (row: Omit<ActivityLog, 'id'>) => Promise<ActivityLog>;
   updateActivity: (id: string, ch: Partial<ActivityLog>) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
+  tasks: TaskItem[];
+  addTask: (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => Promise<TaskItem>;
+  updateTask: (id: string, ch: Partial<TaskItem>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   refreshActivities: () => Promise<void>;
   weights: WeightLog[];
   logWeight: (row: WeightLog) => Promise<void>;
@@ -157,6 +161,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [sleep, setSleep] = useState<SleepLog[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [weights, setWeights] = useState<WeightLog[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -173,10 +178,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setSleep([]);
       setActivities([]);
       setWeights([]);
+      setTasks([]);
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
-    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt, sf] = await Promise.all([
+    const [pr, pl, cx, lg, gv, fe, fd, wl, sl, al, wt, sf, tk] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', s.user.id).maybeSingle(),
       supabase.from('plans').select('id,name,data').eq('is_active', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('custom_exercises').select('*').order('created_at'),
@@ -191,7 +197,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       supabase.from('activity_logs').select('id,day,title,description,category,started_at,ended_at,minutes,segments').gte('day', since).order('created_at', { ascending: true }).limit(2000),
       supabase.from('weight_logs').select('day,kg,waist_cm').order('day', { ascending: true }).limit(2000),
       supabase.from('shared_foods').select('*').order('updated_at', { ascending: false }).limit(3000),
+      supabase.from('tasks').select('id,day,title,category,target_minutes,done,done_at').gte('day', since).order('created_at', { ascending: true }).limit(3000),
     ]);
+    setTasks((tk.data ?? []) as TaskItem[]);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -453,6 +461,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const addTask = useCallback(async (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => {
+    const { data, error } = await supabase.from('tasks').insert(row).select('id,day,title,category,target_minutes,done,done_at').single();
+    if (error) throw new Error(error.message);
+    setTasks((l) => [...l, data as TaskItem]);
+    return data as TaskItem;
+  }, []);
+
+  const updateTask = useCallback(async (id: string, ch: Partial<TaskItem>) => {
+    setTasks((l) => l.map((r) => (r.id === id ? { ...r, ...ch } : r)));
+    const { error } = await supabase.from('tasks').update(ch).eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const deleteTask = useCallback(async (id: string) => {
+    setTasks((l) => l.filter((r) => r.id !== id));
+    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
   // A timer started on another device shows up here when the app comes back to the front.
   const refreshActivities = useCallback(async () => {
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
@@ -486,7 +513,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
-    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, refreshActivities, weights, logWeight, deleteWeight,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

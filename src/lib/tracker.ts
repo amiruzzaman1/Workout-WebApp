@@ -67,21 +67,60 @@ export function segmentsOf(a: ActivityLog): Segment[] {
   return a.started_at && a.ended_at ? [{ s: a.started_at, e: a.ended_at }] : [];
 }
 
-/** "14:05" in the phone's own time zone. */
+/**
+ * Times are saved as 24 hour "HH:MM" (sleep logs and the maths depend on it) but every screen shows and asks for
+ * 12 hour time with AM or PM. "14:05" becomes "2:05 PM", "00:30" becomes "12:30 AM".
+ */
+export function fmt12(hhmm: string | null | undefined) {
+  const m = hhmm ? TIME.exec(hhmm.trim()) : null;
+  if (!m) return hhmm ?? '';
+  const h = Number(m[1]);
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** "2:05 PM" in the phone's own time zone. */
 export function clockOf(iso: string) {
+  const d = new Date(iso);
+  return fmt12(`${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`);
+}
+
+/** "14:05" (24 hour, zero padded) in the phone's own time zone, the form TimeField works in. */
+export function hhmmOf(iso: string) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** "09:00 to 10:15, 14:30 to 15:00" */
+/** "9:00 AM to 10:15 AM, 2:30 PM to 3:00 PM" */
 export function rangeText(segs: Segment[], max = 3) {
   const shown = segs.slice(0, max).map((x) => `${clockOf(x.s)} to ${clockOf(x.e)}`).join(', ');
   return segs.length > max ? `${shown} and ${segs.length - max} more` : shown;
 }
 
+/** Right now as 24 hour "HH:MM", the form the time boxes and the database use. */
 export function nowClock() {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
+
+/** What a person types ("2:30", "9", "11:05") plus AM or PM, as 24 hour "HH:MM". Empty when it is not a real time yet. */
+export function to24(text: string, pm: boolean) {
+  const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(text.trim());
+  if (!m) return '';
+  const h = Number(m[1]);
+  const min = m[2] === undefined ? 0 : Number(m[2]);
+  if (h < 1 || h > 12 || min > 59) return '';
+  return `${String((h % 12) + (pm ? 12 : 0)).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+/** A task planned for a day. Ticking it off keeps it (done stays true), so it shows struck through. */
+export type TaskItem = {
+  id: string;
+  day: string;
+  title: string;
+  category?: string | null;
+  target_minutes?: number | null;
+  done: boolean;
+  done_at?: string | null;
+};
 
 export type WeightLog = { day: string; kg: number | null; waist_cm: number | null };

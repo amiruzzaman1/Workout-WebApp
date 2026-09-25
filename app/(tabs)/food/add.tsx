@@ -6,7 +6,7 @@ import { dayLabel } from '../../../src/components/AppHeader';
 import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, Food, MEAL_LABELS, MEALS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
+import { computeTargets, fmtAmount, Food, FoodEntry, MEAL_LABELS, MEALS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
 import { useStore } from '../../../src/lib/store';
@@ -31,6 +31,22 @@ function sharedLabel(f: Food) {
   return `${f.shared.action === 'added' ? 'Added' : 'Edited'} by ${who}${f.shared.by === 'you' ? '' : ' \u26A0\uFE0F'}`;
 }
 
+/** Rebuilds a Food from a logged entry's saved totals, so picking it again scales from the same numbers. */
+function entryToFood(e: FoodEntry): Food {
+  const amount = Number(e.amount) || (e.unit === 'piece' ? 1 : 100);
+  const k = e.unit === 'piece' ? 1 / amount : 100 / amount;
+  return {
+    name: e.name, brand: e.brand, barcode: e.barcode,
+    kcal_100: Number(e.kcal) * k, protein_100: Number(e.protein_g) * k, carbs_100: Number(e.carbs_g) * k,
+    sugars_100: e.sugars_g == null ? null : Number(e.sugars_g) * k,
+    fat_100: Number(e.fat_g) * k,
+    sat_fat_100: e.sat_fat_g == null ? null : Number(e.sat_fat_g) * k,
+    fibre_100: e.fibre_g == null ? null : Number(e.fibre_g) * k,
+    sodium_100: e.sodium_mg == null ? null : Number(e.sodium_mg) * k,
+    serving_g: null, serving_label: e.serving_label, unit: e.unit, source: e.source,
+  };
+}
+
 export default function AddFood() {
   const { meal: mealParam, date: dateParam, edit } = useLocalSearchParams<{ meal?: Meal; date?: string; edit?: string }>();
   const router = useRouter();
@@ -52,17 +68,7 @@ export default function AddFood() {
   // Editing an entry: rebuild a food from the saved per-portion numbers.
   useEffect(() => {
     if (!editing) return;
-    const k = 100 / (Number(editing.amount) || 100);
-    setFood({
-      name: editing.name, brand: editing.brand, barcode: editing.barcode,
-      kcal_100: Number(editing.kcal) * k, protein_100: Number(editing.protein_g) * k, carbs_100: Number(editing.carbs_g) * k,
-      sugars_100: editing.sugars_g == null ? null : Number(editing.sugars_g) * k,
-      fat_100: Number(editing.fat_g) * k,
-      sat_fat_100: editing.sat_fat_g == null ? null : Number(editing.sat_fat_g) * k,
-      fibre_100: editing.fibre_g == null ? null : Number(editing.fibre_g) * k,
-      sodium_100: editing.sodium_mg == null ? null : Number(editing.sodium_mg) * k,
-      serving_g: null, serving_label: editing.serving_label, unit: editing.unit, source: editing.source,
-    });
+    setFood(entryToFood(editing));
   }, [edit]);
 
   const recents = useMemo(() => {
@@ -73,16 +79,7 @@ export default function AddFood() {
       const key = (e.name + (e.brand ?? '')).toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      const k = 100 / (Number(e.amount) || 100);
-      out.push({
-        name: e.name, brand: e.brand, barcode: e.barcode,
-        kcal_100: Number(e.kcal) * k, protein_100: Number(e.protein_g) * k, carbs_100: Number(e.carbs_g) * k,
-        sugars_100: e.sugars_g == null ? null : Number(e.sugars_g) * k, fat_100: Number(e.fat_g) * k,
-        sat_fat_100: e.sat_fat_g == null ? null : Number(e.sat_fat_g) * k,
-        fibre_100: e.fibre_g == null ? null : Number(e.fibre_g) * k,
-        sodium_100: e.sodium_mg == null ? null : Number(e.sodium_mg) * k,
-        serving_g: null, serving_label: e.serving_label, unit: e.unit, source: e.source,
-      });
+      out.push(entryToFood(e));
     }
     return out;
   }, [foodEntries]);
@@ -333,7 +330,7 @@ function FoodList({ foods, onPick }: { foods: Food[]; onPick: (f: Food) => void 
           <View style={{ flex: 1 }}>
             <Text style={st.rowTitle} numberOfLines={2}>{f.name}</Text>
             <Text style={st.meta} numberOfLines={1}>
-              {f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal / 100 {f.unit ?? 'g'} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
+              {f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal {f.unit === 'piece' ? `/ ${f.serving_label || 'piece'}` : `/ 100 ${f.unit ?? 'g'}`} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
             </Text>
             {!!f.shared && (
               <Text style={[st.who, { color: f.shared.by === 'you' ? C.muted : A.carbs }]}>{sharedLabel(f)}</Text>
@@ -346,31 +343,50 @@ function FoodList({ foods, onPick }: { foods: Food[]; onPick: (f: Food) => void 
   );
 }
 
+type Basis = 'weight' | 'piece';
+type PerUnit = 'g' | 'ml' | 'kg' | 'L';
+
 function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, submitLabel = 'Continue', onCancel }: {
   onDone: (f: Food) => void | Promise<void>; initialName?: string; initialBarcode?: string | null; initial?: Food; submitLabel?: string; onCancel?: () => void;
 }) {
   const fmt = (n: number | null | undefined) => (n == null ? '' : String(Math.round(Number(n) * 10) / 10));
+  const [basis, setBasis] = useState<Basis>(initial?.unit === 'piece' ? 'piece' : 'weight');
+  const [perUnit, setPerUnit] = useState<PerUnit>(initial?.unit === 'ml' ? 'ml' : 'g');
   const [v, setV] = useState({
     name: initial?.name ?? initialName, brand: initial?.brand ?? '',
     kcal: fmt(initial?.kcal_100), p: fmt(initial?.protein_100), c: fmt(initial?.carbs_100), f: fmt(initial?.fat_100), per: '100',
+    sugars: fmt(initial?.sugars_100), satFat: fmt(initial?.sat_fat_100), fibre: fmt(initial?.fibre_100), sodium: fmt(initial?.sodium_100),
+    pieceLabel: initial?.unit === 'piece' ? initial?.serving_label ?? '' : '',
   });
+  const [showMore, setShowMore] = useState(!!(initial?.fibre_100 || initial?.sodium_100));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof v) => (t: string) => setV((x) => ({ ...x, [k]: t }));
   const num = (s: string) => Number(s.replace(',', '.')) || 0;
+  const numOrNull = (s: string) => (s.trim() ? num(s) : null);
 
   async function submit() {
-    const per = num(v.per) || 100;
-    const k = 100 / per;
+    const isPiece = basis === 'piece';
+    // Bulk foods are sometimes labelled per kg or per litre; convert to the per 100 g/ml the app stores.
+    const per = isPiece ? 1 : num(v.per) || 100;
+    const perBase = perUnit === 'kg' || perUnit === 'L' ? per * 1000 : per;
+    const k = isPiece ? 1 : 100 / perBase;
+    const unit = isPiece ? 'piece' : perUnit === 'kg' ? 'g' : perUnit === 'L' ? 'ml' : perUnit;
+    const pieceLabel = v.pieceLabel.trim();
     const food: Food = {
       name: v.name.trim() || 'My food', brand: v.brand.trim() || null, barcode: initial?.barcode ?? initialBarcode ?? null,
       kcal_100: num(v.kcal) * k, protein_100: num(v.p) * k, carbs_100: num(v.c) * k, fat_100: num(v.f) * k,
-      sugars_100: initial?.sugars_100 ?? null, sat_fat_100: initial?.sat_fat_100 ?? null, fibre_100: initial?.fibre_100 ?? null, sodium_100: initial?.sodium_100 ?? null,
-      serving_g: initial ? initial.serving_g ?? null : per, serving_label: initial ? initial.serving_label ?? null : `${per} g`,
-      unit: initial?.unit ?? 'g', source: 'User added',
+      sugars_100: numOrNull(v.sugars) == null ? null : numOrNull(v.sugars)! * k,
+      sat_fat_100: numOrNull(v.satFat) == null ? null : numOrNull(v.satFat)! * k,
+      fibre_100: numOrNull(v.fibre) == null ? null : numOrNull(v.fibre)! * k,
+      sodium_100: numOrNull(v.sodium) == null ? null : numOrNull(v.sodium)! * k,
+      serving_g: isPiece ? null : (initial ? initial.serving_g ?? null : perBase),
+      serving_label: isPiece ? (pieceLabel || '1 piece') : (initial ? initial.serving_label ?? null : `${per} ${perUnit}`),
+      unit, source: 'User added',
     };
-    if (food.kcal_100 > 1000 || food.protein_100 > 100 || food.carbs_100 > 100 || food.fat_100 > 100) {
-      setError('Those numbers look too high. Calories can be at most 1000 per 100 g, and each of protein, carbs and fat at most 100 g per 100 g.');
+    const capName = isPiece ? 'one piece' : `100 ${unit}`;
+    if (food.kcal_100 > (isPiece ? 3000 : 1000) || (!isPiece && (food.protein_100 > 100 || food.carbs_100 > 100 || food.fat_100 > 100))) {
+      setError(`Those numbers look too high for ${capName}. Double check what you typed.`);
       return;
     }
     setError(null);
@@ -386,24 +402,100 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
 
   return (
     <View style={{ gap: 4 }}>
-      <P muted style={{ fontSize: 13 }}>Type what's on the label. Enter the numbers for the amount shown (usually per 100 g). Everyone using the app will see this food, so please double check the numbers.</P>
+      <P muted style={{ fontSize: 13 }}>Type what's on the label. Everyone using the app will see this food, so please double check the numbers.</P>
       <Label>Food name</Label>
       <Input value={v.name} onChangeText={set('name')} placeholder="e.g. Chicken breast, cooked" />
       <Label>Brand (optional)</Label>
       <Input value={v.brand} onChangeText={set('brand')} placeholder="e.g. Tegel" />
-      <Label>Numbers are per (g or ml)</Label>
-      <Input value={v.per} onChangeText={set('per')} keyboardType="decimal-pad" />
+
+      <Label>How is it measured?</Label>
+      <Seg
+        value={basis} onChange={setBasis}
+        options={[['weight', 'By weight'], ['piece', 'Whole item']]}
+      />
+
+      {basis === 'weight' ? (
+        <>
+          <Label>Numbers are per</Label>
+          <Row style={{ gap: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}><Input value={v.per} onChangeText={set('per')} keyboardType="decimal-pad" /></View>
+            <View style={{ flex: 1.4, minWidth: 0 }}>
+              <Seg value={perUnit} onChange={setPerUnit} options={[['g', 'g'], ['ml', 'ml'], ['kg', 'kg'], ['L', 'L']]} />
+            </View>
+          </Row>
+        </>
+      ) : (
+        <>
+          <Label>What is one piece? (optional)</Label>
+          <Input value={v.pieceLabel} onChangeText={set('pieceLabel')} placeholder="e.g. 1 kebab, 1 slice, 1 can" />
+          <P muted style={{ fontSize: 12 }}>The numbers below are for one whole piece, however big it really is, not for a weight.</P>
+        </>
+      )}
+
       <Row style={{ gap: 8 }}>
         <View style={{ flex: 1, minWidth: 0 }}><Label>Calories</Label><Input value={v.kcal} onChangeText={set('kcal')} keyboardType="decimal-pad" placeholder="kcal" /></View>
         <View style={{ flex: 1, minWidth: 0 }}><Label>Protein g</Label><Input value={v.p} onChangeText={set('p')} keyboardType="decimal-pad" /></View>
       </Row>
-      <Row style={{ gap: 8 }}>
-        <View style={{ flex: 1, minWidth: 0 }}><Label>Carbs g</Label><Input value={v.c} onChangeText={set('c')} keyboardType="decimal-pad" /></View>
-        <View style={{ flex: 1, minWidth: 0 }}><Label>Fat g</Label><Input value={v.f} onChangeText={set('f')} keyboardType="decimal-pad" /></View>
+      <Row style={{ gap: 8, alignItems: 'flex-start' }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Label>Carbs g</Label>
+          <Input value={v.c} onChangeText={set('c')} keyboardType="decimal-pad" />
+          <SubField label="Sugars g" value={v.sugars} onChangeText={set('sugars')} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Label>Fat g</Label>
+          <Input value={v.f} onChangeText={set('f')} keyboardType="decimal-pad" />
+          <SubField label="Saturated g" value={v.satFat} onChangeText={set('satFat')} />
+        </View>
       </Row>
+      <P muted style={{ fontSize: 11, marginTop: 2 }}>Sugars and saturated are part of the carbs and fat above, not extra, so on the label look for "of which sugars" and "of which saturates".</P>
+
+      <Pressable onPress={() => setShowMore((s) => !s)} accessibilityRole="button" style={(p) => [st.moreRow, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
+        <Ionicons name={showMore ? 'chevron-down' : 'chevron-forward'} size={16} color={C.muted} />
+        <Text style={st.moreText}>More nutrition (optional): fibre, sodium</Text>
+      </Pressable>
+      {showMore && (
+        <Row style={{ gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 0 }}><Label>Fibre g</Label><Input value={v.fibre} onChangeText={set('fibre')} keyboardType="decimal-pad" /></View>
+          <View style={{ flex: 1, minWidth: 0 }}><Label>Sodium mg</Label><Input value={v.sodium} onChangeText={set('sodium')} keyboardType="decimal-pad" /></View>
+        </Row>
+      )}
+
       {!!error && <Text style={{ color: C.danger, fontFamily: F.body, marginTop: 8 }}>{error}</Text>}
       <Button title={submitLabel} loading={saving} style={{ marginTop: 14 }} onPress={submit} />
       {onCancel && <Button kind="secondary" title="Cancel" onPress={onCancel} />}
+    </View>
+  );
+}
+
+/**
+ * A smaller, indented box under a macro's Input, joined to it with a corner connector, for a nutrient that
+ * is part of that macro rather than an amount of its own, e.g. Saturated is part of Fat, not on top of it.
+ */
+function SubField({ label, value, onChangeText }: { label: string; value: string; onChangeText: (t: string) => void }) {
+  return (
+    <View style={st.subRow}>
+      <View style={st.subConnector} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={st.subLabel}>{label} <Text style={st.subOptional}>optional</Text></Text>
+        <Input value={value} onChangeText={onChangeText} keyboardType="decimal-pad" style={st.subInput} />
+      </View>
+    </View>
+  );
+}
+
+/** A row of equal segments, joined together, for a small set of exclusive choices. */
+function Seg<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <View style={st.seg2} accessibilityRole="radiogroup">
+      {options.map(([k, label], i) => {
+        const on = value === k;
+        return (
+          <Pressable key={k} onPress={() => onChange(k)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={(p) => [st.seg2Item, smooth, i > 0 && st.segDivider, hovered(p) && !on && { backgroundColor: C.card2 }, on && st.segOn]}>
+            <Text style={[st.segText, { fontSize: 13 }, on && { color: C.inverseText }]} numberOfLines={1}>{label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -413,12 +505,25 @@ function Portion({
 }: { food: Food; meal: Meal; onMeal: (m: Meal) => void; date: string; initialAmount?: number; onBack: () => void; onEdit?: () => void; onSave: (e: any) => Promise<void> }) {
   const { profile } = useStore();
   const t = computeTargets(profile as any);
-  const serving = food.serving_g && food.serving_g > 0 ? food.serving_g : null;
-  const [amount, setAmount] = useState(String(initialAmount ?? serving ?? 100));
-  const [busy, setBusy] = useState(false);
-  const grams = Number(amount.replace(',', '.')) || 0;
-  const m = scaleFood(food, grams);
+  const isPiece = food.unit === 'piece';
+  const serving = !isPiece && food.serving_g && food.serving_g > 0 ? food.serving_g : null;
   const unit = food.unit ?? 'g';
+  const bigUnit = unit === 'ml' ? 'L' : 'kg';
+  const [amount, setAmount] = useState(String(initialAmount ?? serving ?? (isPiece ? 1 : 100)));
+  const [scaleUnit, setScaleUnit] = useState<'base' | 'big'>('base');
+  const [busy, setBusy] = useState(false);
+  const typed = Number(amount.replace(',', '.')) || 0;
+  const qty = scaleUnit === 'big' ? typed * 1000 : typed; // the count (piece) or amount in g/ml (weight)
+  const m = scaleFood(food, qty);
+
+  /** Switching between g/ml and kg/L converts the number shown, so 500 g becomes 0.5 kg and back. */
+  function changeScaleUnit(next: 'base' | 'big') {
+    if (next === scaleUnit) return;
+    const converted = next === 'big' ? typed / 1000 : typed * 1000;
+    setAmount(String(Math.round(converted * 1000) / 1000));
+    setScaleUnit(next);
+  }
+  const pickBase = (v: number) => { setScaleUnit('base'); setAmount(String(v)); };
 
   return (
     <Screen>
@@ -435,18 +540,35 @@ function Portion({
       )}
 
       <Row wrap style={{ marginTop: 10 }}>
-        {serving && <Chip label={`1 serving (${round(serving)} ${unit})`} active={grams === serving} onPress={() => setAmount(String(serving))} />}
-        {serving && <Chip label="2 servings" active={grams === serving * 2} onPress={() => setAmount(String(serving * 2))} />}
-        <Chip label={`100 ${unit}`} active={grams === 100} onPress={() => setAmount('100')} />
-        <Chip label={`200 ${unit}`} active={grams === 200} onPress={() => setAmount('200')} />
+        {isPiece ? (
+          [1, 2, 3].map((n) => <Chip key={n} label={fmtAmount(n, 'piece', food.serving_label)} active={scaleUnit === 'base' && typed === n} onPress={() => pickBase(n)} />)
+        ) : (
+          <>
+            {serving && <Chip label={`1 serving (${round(serving)} ${unit})`} active={scaleUnit === 'base' && typed === serving} onPress={() => pickBase(serving)} />}
+            {serving && <Chip label="2 servings" active={scaleUnit === 'base' && typed === serving * 2} onPress={() => pickBase(serving * 2)} />}
+            <Chip label={`100 ${unit}`} active={scaleUnit === 'base' && typed === 100} onPress={() => pickBase(100)} />
+            <Chip label={`200 ${unit}`} active={scaleUnit === 'base' && typed === 200} onPress={() => pickBase(200)} />
+          </>
+        )}
       </Row>
 
       <Label>Meal</Label>
       <MealPicker meal={meal} onMeal={onMeal} />
 
-      <Label>Amount ({unit})</Label>
-      <Input value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" />
-      {food.serving_label && <P muted style={{ fontSize: 12 }}>Label serving: {food.serving_label}</P>}
+      <Label>{isPiece ? 'How many?' : `Amount (${scaleUnit === 'big' ? bigUnit : unit})`}</Label>
+      {isPiece ? (
+        <Input value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" />
+      ) : (
+        <Row style={{ gap: 8, alignItems: 'flex-start' }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Input value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" />
+          </View>
+          <View style={{ width: 110 }}>
+            <Seg value={scaleUnit} onChange={changeScaleUnit} options={[['base', unit], ['big', bigUnit]]} />
+          </View>
+        </Row>
+      )}
+      {food.serving_label && !isPiece && <P muted style={{ fontSize: 12 }}>Label serving: {food.serving_label}</P>}
 
       <View style={st.macros}>
         <Big label="Calories" value={`${m.kcal}`} unit="kcal" />
@@ -483,7 +605,7 @@ function Portion({
           try {
             await onSave({
               name: food.name, brand: food.brand ?? null, barcode: food.barcode ?? null,
-              amount: grams, unit, serving_label: food.serving_label ?? null,
+              amount: qty, unit, serving_label: food.serving_label ?? null,
               ...m, source: food.source ?? null,
             });
           } finally { setBusy(false); }
@@ -536,6 +658,15 @@ const st = StyleSheet.create({
   segDivider: { borderLeftWidth: 1, borderLeftColor: C.borderStrong },
   segOn: { backgroundColor: C.inverse },
   segText: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
+  seg2: { flexDirection: 'row', borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, overflow: 'hidden', marginTop: 4 },
+  seg2Item: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  moreRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, borderRadius: R.sm, marginTop: 10 },
+  moreText: { color: C.muted, fontFamily: F.bodyMed, fontSize: 12 },
+  subRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
+  subConnector: { width: 12, height: 16, marginTop: 1, borderLeftWidth: 1, borderBottomWidth: 1, borderColor: C.border, borderBottomLeftRadius: 6 },
+  subLabel: { color: C.faint, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 },
+  subOptional: { color: C.faint, fontFamily: F.body, textTransform: 'none', letterSpacing: 0 },
+  subInput: { minHeight: 34, paddingVertical: 6, paddingHorizontal: 10, fontSize: 13, borderColor: C.border },
   tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: C.border },
   tab: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 2, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
   tabOn: { borderBottomColor: A.carbs },
