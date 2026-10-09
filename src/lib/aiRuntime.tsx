@@ -6,7 +6,8 @@ import { AiRuntime } from './aiAssistant';
 
 const STUB: AiRuntime = {
   available: false, enabled: false, setEnabled: () => {}, status: 'not_downloaded', progress: 0, error: null,
-  isLoaded: false, download: async () => {}, cancelDownload: async () => {}, remove: async () => {}, ask: async () => '',
+  isLoaded: false, download: async () => {}, cancelDownload: async () => {}, importLocalFile: async () => {},
+  remove: async () => {}, ask: async () => '',
 };
 
 const Ctx = createContext<AiRuntime>(STUB);

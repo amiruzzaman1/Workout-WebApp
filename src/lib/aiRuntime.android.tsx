@@ -2,28 +2,45 @@
 // Wraps expo-llm-mediapipe's useLLM, which talks to Google's MediaPipe LLM Inference API: the actual model file
 // lives on disk on the phone and inference runs there, nothing is sent anywhere. The model itself stays off
 // until the user explicitly downloads it from User settings, since it is a sizeable one-time download.
-import { useLLM } from 'expo-llm-mediapipe';
-import { createContext, ReactNode, useCallback, useContext, useEffect } from 'react';
+import { DownloadableLlmReturn, useLLM } from 'expo-llm-mediapipe';
+import { Directory, File, Paths } from 'expo-file-system';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { AiRuntime, MODEL_NAME, MODEL_URL, useAiEnabled } from './aiAssistant';
 
 const Ctx = createContext<AiRuntime | null>(null);
 
-export function AiRuntimeProvider({ children }: { children: ReactNode }) {
-  const [enabled, setEnabled] = useAiEnabled();
+// useLLM() is overloaded (asset/file models return a plainer shape); this runtime only ever calls it with
+// modelUrl set, which always resolves to the downloadable shape with downloadModel/downloadStatus etc.
+type Llm = DownloadableLlmReturn;
+
+// useLLM() checks disk for an already downloaded file only once, the instant it first mounts. Importing a
+// file manually (importLocalFile below) happens later, after that one check already ran and found nothing,
+// so this wrapper gets remounted (by changing its key) whenever the runtime needs a fresh check, instead of
+// requiring the whole app to restart to notice the file is now there.
+function LlmBridge({ onChange }: { onChange: (llm: Llm) => void }) {
   const llm = useLLM({
     modelName: MODEL_NAME, modelUrl: MODEL_URL,
     maxTokens: 256, topK: 40, temperature: 0.2, randomSeed: 7,
   });
+  useEffect(() => { onChange(llm); }, [llm, onChange]);
+  return null;
+}
+
+export function AiRuntimeProvider({ children }: { children: ReactNode }) {
+  const [enabled, setEnabled] = useAiEnabled();
+  const [generation, setGeneration] = useState(0);
+  const [llm, setLlm] = useState<Llm | null>(null);
 
   // Loading a model that is already on disk is quick; this only fires once per app open, when enabled and
   // not already loaded, never a fresh download, that is always the user's own tap.
   useEffect(() => {
-    if (enabled && llm.downloadStatus === 'downloaded' && !llm.isLoaded) {
+    if (llm && enabled && llm.downloadStatus === 'downloaded' && !llm.isLoaded) {
       llm.loadModel().catch(() => {});
     }
-  }, [enabled, llm.downloadStatus, llm.isLoaded]);
+  }, [enabled, llm]);
 
   const download = useCallback(async () => {
+    if (!llm) return;
     await llm.downloadModel();
     setEnabled(true);
   }, [llm, setEnabled]);
@@ -40,16 +57,42 @@ export function AiRuntimeProvider({ children }: { children: ReactNode }) {
     // expo-llm-mediapipe's hook does not expose a delete method itself; the raw native module (its default export) does.
     const mod = (await import('expo-llm-mediapipe')).default;
     await mod.deleteDownloadedModel(MODEL_NAME).catch(() => {});
+    setGeneration((g) => g + 1);
   }, [setEnabled]);
 
-  const ask = useCallback((prompt: string) => llm.generateResponse(prompt), [llm]);
+  // For when the in-app download will not finish: the user downloads the exact same file themselves (their
+  // phone's browser, a PC and a cable, anything), picks it with the system file picker, and this copies it
+  // into the one folder and filename expo-llm-mediapipe's own "is it already downloaded" check looks at
+  // (its internal files directory, llm_models/<model name>, which Paths.document on Android is the same
+  // folder as), then forces useLLM() to run that check again.
+  const importLocalFile = useCallback(async () => {
+    const picked = await File.pickFileAsync();
+    if (picked.canceled) return;
+    const dir = new Directory(Paths.document, 'llm_models');
+    if (!dir.exists) dir.create({ intermediates: true });
+    const dest = new File(dir, MODEL_NAME);
+    await picked.result.copy(dest, { overwrite: true });
+    setGeneration((g) => g + 1);
+  }, []);
+
+  const ask = useCallback((prompt: string) => {
+    if (!llm) throw new Error('Model is not ready yet');
+    return llm.generateResponse(prompt);
+  }, [llm]);
 
   const value: AiRuntime = {
-    available: true, enabled, setEnabled, status: llm.downloadStatus, progress: llm.downloadProgress,
-    error: llm.downloadError, isLoaded: llm.isLoaded, download, cancelDownload, remove, ask,
+    available: true, enabled, setEnabled,
+    status: llm?.downloadStatus ?? 'not_downloaded', progress: llm?.downloadProgress ?? 0,
+    error: llm?.downloadError ?? null, isLoaded: llm?.isLoaded ?? false,
+    download, cancelDownload, remove, importLocalFile, ask,
   };
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <>
+      <LlmBridge key={generation} onChange={setLlm} />
+      <Ctx.Provider value={value}>{children}</Ctx.Provider>
+    </>
+  );
 }
 
 export function useAiRuntime(): AiRuntime {

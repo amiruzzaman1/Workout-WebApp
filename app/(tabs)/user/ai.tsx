@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Eyebrow, H1, P, Row, Screen } from '../../../src/components/ui';
-import { MODEL_SIZE_GB } from '../../../src/lib/aiAssistant';
+import { MODEL_SIZE_GB, MODEL_URL } from '../../../src/lib/aiAssistant';
 import { useAiRuntime } from '../../../src/lib/aiRuntime';
 import { confirm } from '../../../src/lib/confirm';
 import { A, C, F, R } from '../../../src/lib/theme';
@@ -44,6 +44,11 @@ export default function AiSettings() {
     setBusy(true);
     try { await ai.remove(); } finally { setBusy(false); }
   }
+  async function importLocalFile() {
+    setErr(null); setBusy(true);
+    try { await ai.importLocalFile(); } catch (e: any) { setErr(e?.message ?? 'Could not use that file. Make sure you picked the right one.'); }
+    finally { setBusy(false); }
+  }
 
   return (
     <Screen>
@@ -71,6 +76,7 @@ export default function AiSettings() {
               <Row style={{ gap: 8 }}><Ionicons name="cloud-download-outline" size={18} color={C.muted} /><Text style={st.status}>Not downloaded</Text></Row>
               <P muted style={{ fontSize: 13 }}>A {MODEL_SIZE_GB} GB one-off download, Wi-Fi recommended. It stays on your phone after that, no further downloads.</P>
               <Button icon="cloud-download-outline" title={`Download the model (${MODEL_SIZE_GB} GB)`} onPress={download} loading={busy} style={{ marginTop: 4 }} />
+              <ManualImport onOpenLink={() => Linking.openURL(MODEL_URL)} onImport={importLocalFile} busy={busy} />
             </>
           )}
           {ai.status === 'downloading' && (
@@ -91,6 +97,7 @@ export default function AiSettings() {
               <Row style={{ gap: 8 }}><Ionicons name="alert-circle-outline" size={18} color={C.danger} /><Text style={st.status}>Download failed</Text></Row>
               <P muted style={{ fontSize: 13 }}>{ai.error ?? 'Something went wrong. Check your connection and try again.'}</P>
               <Button icon="refresh" title="Try again" onPress={download} loading={busy} style={{ marginTop: 4 }} />
+              <ManualImport onOpenLink={() => Linking.openURL(MODEL_URL)} onImport={importLocalFile} busy={busy} />
             </>
           )}
           {ai.status === 'downloaded' && (
@@ -117,6 +124,24 @@ export default function AiSettings() {
         get things wrong, which is exactly why nothing it proposes skips the confirm screen.
       </P>
     </Screen>
+  );
+}
+
+/** Downloading inside the app can stall on a weak connection. This lets the user get the exact same file
+ *  another way (their phone's own browser handles a 3 GB download far more reliably, with its own retry
+ *  and resume) and just point the app at it, skipping the in-app downloader entirely. */
+function ManualImport({ onOpenLink, onImport, busy }: { onOpenLink: () => void; onImport: () => void; busy: boolean }) {
+  return (
+    <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border, gap: 8 }}>
+      <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 12 }}>
+        If the download above will not finish, get the same file your own way (your phone's browser is usually more
+        reliable for a file this size), then point the app at it.
+      </Text>
+      <Row style={{ gap: 8, flexWrap: 'wrap' }}>
+        <Button small kind="secondary" icon="open-outline" title="Open the download link" onPress={onOpenLink} />
+        <Button small kind="secondary" icon="folder-open-outline" title="Use a file I already downloaded" onPress={onImport} loading={busy} />
+      </Row>
+    </View>
   );
 }
 

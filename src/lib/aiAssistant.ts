@@ -32,6 +32,8 @@ export type AiRuntime = {
   isLoaded: boolean;
   download: () => Promise<void>;
   cancelDownload: () => Promise<void>;
+  /** For when the in-app download will not finish: point the model at a copy of the file the user downloaded themselves. */
+  importLocalFile: () => Promise<void>;
   remove: () => Promise<void>;
   ask: (prompt: string) => Promise<string>;
 };

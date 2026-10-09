@@ -47,7 +47,8 @@
         }
       ],
       "expo-speech-recognition",
-      "expo-llm-mediapipe"
+      "expo-llm-mediapipe",
+      "expo-file-system"
     ],
     "scheme": "workout",
     "extra": {
