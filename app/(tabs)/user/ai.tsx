@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Eyebrow, H1, P, Row, Screen } from '../../../src/components/ui';
 import { MODEL_SIZE_GB } from '../../../src/lib/aiAssistant';
@@ -17,12 +17,28 @@ export default function AiSettings() {
   const ai = useAiRuntime();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [stuck, setStuck] = useState(false);
+  const lastProgress = useRef({ value: 0, at: Date.now() });
 
   async function download() {
-    setErr(null); setBusy(true);
+    setErr(null); setBusy(true); setStuck(false);
     try { await ai.download(); } catch (e: any) { setErr(e?.message ?? 'Could not download the model. Check your connection and try again.'); }
     finally { setBusy(false); }
   }
+  async function cancel() {
+    setBusy(true);
+    try { await ai.cancelDownload(); } finally { setBusy(false); setStuck(false); }
+  }
+
+  // The native download can take a little while to report its first bytes even on a good connection, so
+  // this only flags "stuck" once progress has genuinely gone nowhere for a while, giving a way out instead
+  // of just watching 0% forever if the connection has actually stalled.
+  useEffect(() => {
+    if (ai.status !== 'downloading') { setStuck(false); return; }
+    if (ai.progress !== lastProgress.current.value) lastProgress.current = { value: ai.progress, at: Date.now() };
+    const id = setInterval(() => { setStuck(Date.now() - lastProgress.current.at > 25000); }, 2000);
+    return () => clearInterval(id);
+  }, [ai.status, ai.progress]);
   async function remove() {
     if (!(await confirm('Remove the AI model?', 'It will stop understanding anything word matching cannot, until you download it again.', { confirmText: 'Remove', danger: true }))) return;
     setBusy(true);
@@ -62,6 +78,12 @@ export default function AiSettings() {
               <Row style={{ gap: 8 }}><Ionicons name="cloud-download" size={18} color={A.core} /><Text style={st.status}>Downloading…</Text></Row>
               <View style={st.track}><View style={[st.fill, { width: `${Math.round(ai.progress * 100)}%` }]} /></View>
               <P muted style={{ fontSize: 12 }}>{Math.round(ai.progress * 100)}% of {MODEL_SIZE_GB} GB. You can leave this page, it keeps going.</P>
+              {stuck && (
+                <>
+                  <P style={{ fontSize: 13, color: C.danger }}>This has not moved for a while, it may be stuck. Check you are on Wi-Fi, then cancel and try again.</P>
+                  <Button small icon="close" kind="secondary" tint={A.over} title="Cancel" onPress={cancel} loading={busy} style={{ marginTop: 4 }} />
+                </>
+              )}
             </>
           )}
           {ai.status === 'error' && (

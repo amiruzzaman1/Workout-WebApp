@@ -31,6 +31,7 @@ export type AiRuntime = {
   error: string | null;
   isLoaded: boolean;
   download: () => Promise<void>;
+  cancelDownload: () => Promise<void>;
   remove: () => Promise<void>;
   ask: (prompt: string) => Promise<string>;
 };

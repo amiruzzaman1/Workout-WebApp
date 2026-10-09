@@ -28,6 +28,13 @@ export function AiRuntimeProvider({ children }: { children: ReactNode }) {
     setEnabled(true);
   }, [llm, setEnabled]);
 
+  // useLLM() does not expose a cancel method itself, only the raw native module does (the same module
+  // the download's own progress events already come from, so the hook's state still updates correctly).
+  const cancelDownload = useCallback(async () => {
+    const mod = (await import('expo-llm-mediapipe')).default;
+    await mod.cancelDownload(MODEL_NAME).catch(() => {});
+  }, []);
+
   const remove = useCallback(async () => {
     setEnabled(false);
     // expo-llm-mediapipe's hook does not expose a delete method itself; the raw native module (its default export) does.
@@ -39,7 +46,7 @@ export function AiRuntimeProvider({ children }: { children: ReactNode }) {
 
   const value: AiRuntime = {
     available: true, enabled, setEnabled, status: llm.downloadStatus, progress: llm.downloadProgress,
-    error: llm.downloadError, isLoaded: llm.isLoaded, download, remove, ask,
+    error: llm.downloadError, isLoaded: llm.isLoaded, download, cancelDownload, remove, ask,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

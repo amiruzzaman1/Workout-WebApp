@@ -1,0 +1,48 @@
+diff --git a/node_modules/expo-llm-mediapipe/android/src/main/java/expo/modules/llmmediapipe/ExpoLlmMediapipeModule.kt b/node_modules/expo-llm-mediapipe/android/src/main/java/expo/modules/llmmediapipe/ExpoLlmMediapipeModule.kt
+index baa3289..64a6262 100644
+--- a/node_modules/expo-llm-mediapipe/android/src/main/java/expo/modules/llmmediapipe/ExpoLlmMediapipeModule.kt
++++ b/node_modules/expo-llm-mediapipe/android/src/main/java/expo/modules/llmmediapipe/ExpoLlmMediapipeModule.kt
+@@ -140,6 +140,9 @@ class ExpoLlmMediapipeModule : Module() {
+ 
+   // Track active downloads
+   private val activeDownloads = mutableMapOf<String, Job>()
++  // The in-flight connection for each download, so Cancel can close the socket immediately instead of
++  // waiting for a blocking read that may never return on its own.
++  private val activeConnections = mutableMapOf<String, HttpURLConnection>()
+ 
+   override fun definition() = ModuleDefinition {
+     Name("ExpoLlmMediapipe")
+@@ -368,6 +371,12 @@ class ExpoLlmMediapipeModule : Module() {
+           }
+           
+           connection.connectTimeout = (options?.get("timeout") as? Number)?.toInt() ?: 30000
++          // Without this, a connection that stalls after connecting (a dead redirect target, a CDN
++          // hiccup, a flaky mobile network) hangs the blocking read forever: no progress, no error,
++          // nothing the app can react to. This turns that into a catchable SocketTimeoutException.
++          connection.readTimeout = 30000
++          connection.instanceFollowRedirects = true
++          activeConnections[modelName] = connection
+           connection.connect()
+           
+           val contentLength = connection.contentLength.toLong()
+@@ -450,6 +459,7 @@ class ExpoLlmMediapipeModule : Module() {
+           }
+         } finally {
+           activeDownloads.remove(modelName)
++          activeConnections.remove(modelName)
+         }
+       }
+       
+@@ -461,7 +471,12 @@ class ExpoLlmMediapipeModule : Module() {
+       val job = activeDownloads[modelName]
+       if (job != null) {
+         job.cancel()
++        // job.cancel() alone only takes effect between reads; closing the connection here breaks the
++        // blocking read immediately instead of leaving the user waiting on whatever is left of the
++        // read timeout.
++        activeConnections[modelName]?.disconnect()
+         activeDownloads.remove(modelName)
++        activeConnections.remove(modelName)
+         promise.resolve(true)
+       } else {
+         promise.resolve(false)
