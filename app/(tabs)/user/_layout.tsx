@@ -1,11 +1,11 @@
 import { Stack } from 'expo-router';
-import { stackOptions } from '../../../src/components/StackHeader';
+import { stackOptionsNoAppHeader } from '../../../src/components/StackHeader';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
 export default function YouStack() {
   return (
-    <Stack screenOptions={stackOptions}>
+    <Stack screenOptions={stackOptionsNoAppHeader}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
     </Stack>
   );
