@@ -30,6 +30,9 @@ export type AiRuntime = {
   progress: number;
   error: string | null;
   isLoaded: boolean;
+  /** Set only if loading an already downloaded model into memory failed; loading itself is automatic. */
+  loadError: string | null;
+  retryLoad: () => Promise<void>;
   download: () => Promise<void>;
   cancelDownload: () => Promise<void>;
   /** For when the in-app download will not finish: point the model at a copy of the file the user downloaded themselves. */

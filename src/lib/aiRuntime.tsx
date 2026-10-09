@@ -6,7 +6,8 @@ import { AiRuntime } from './aiAssistant';
 
 const STUB: AiRuntime = {
   available: false, enabled: false, setEnabled: () => {}, status: 'not_downloaded', progress: 0, error: null,
-  isLoaded: false, download: async () => {}, cancelDownload: async () => {}, importLocalFile: async () => {},
+  isLoaded: false, loadError: null, retryLoad: async () => {},
+  download: async () => {}, cancelDownload: async () => {}, importLocalFile: async () => {},
   remove: async () => {}, ask: async () => '',
 };
 

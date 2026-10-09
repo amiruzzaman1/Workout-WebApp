@@ -49,6 +49,24 @@ export default function AiSettings() {
     try { await ai.importLocalFile(); } catch (e: any) { setErr(e?.message ?? 'Could not use that file. Make sure you picked the right one.'); }
     finally { setBusy(false); }
   }
+  async function retryLoad() {
+    setBusy(true);
+    try { await ai.retryLoad(); } finally { setBusy(false); }
+  }
+
+  // Loading an already downloaded model into memory is usually quick, but the first time (fresh install,
+  // or right after a manual file import) can genuinely take a couple of minutes while MediaPipe sets things
+  // up, so this times how long it has been "Loading..." to tell the user that, rather than leaving them
+  // guessing whether 5 minutes of nothing happening is normal or broken.
+  const loadingSince = useRef<number | null>(null);
+  const [loadingFor, setLoadingFor] = useState(0);
+  const loading = ai.status === 'downloaded' && ai.enabled && !ai.isLoaded && !ai.loadError;
+  useEffect(() => {
+    if (!loading) { loadingSince.current = null; setLoadingFor(0); return; }
+    if (loadingSince.current == null) loadingSince.current = Date.now();
+    const id = setInterval(() => { setLoadingFor(Math.round((Date.now() - loadingSince.current!) / 1000)); }, 1000);
+    return () => clearInterval(id);
+  }, [loading]);
 
   return (
     <Screen>
@@ -103,13 +121,23 @@ export default function AiSettings() {
           {ai.status === 'downloaded' && (
             <>
               <Row style={{ gap: 8 }}>
-                <Ionicons name={ai.enabled ? 'checkmark-circle' : 'pause-circle-outline'} size={18} color={ai.enabled ? A.up : C.muted} />
-                <Text style={st.status}>{ai.enabled ? (ai.isLoaded ? 'Ready' : 'Loading…') : 'Downloaded, turned off'}</Text>
+                <Ionicons
+                  name={ai.loadError ? 'alert-circle-outline' : ai.enabled ? (ai.isLoaded ? 'checkmark-circle' : 'cloud-download') : 'pause-circle-outline'}
+                  size={18} color={ai.loadError ? C.danger : ai.enabled ? A.up : C.muted}
+                />
+                <Text style={st.status}>{ai.loadError ? 'Could not load the model' : ai.enabled ? (ai.isLoaded ? 'Ready' : `Loading… (${loadingFor}s)`) : 'Downloaded, turned off'}</Text>
               </Row>
-              <P muted style={{ fontSize: 13 }}>
-                {ai.enabled ? 'Voice and typed commands will ask it when word matching does not understand something.' : 'Turn it on to let commands use it again.'}
-              </P>
+              {ai.loadError ? (
+                <P style={{ fontSize: 13, color: C.danger }}>{ai.loadError}</P>
+              ) : (
+                <P muted style={{ fontSize: 13 }}>
+                  {!ai.enabled ? 'Turn it on to let commands use it again.'
+                    : !ai.isLoaded ? (loadingFor > 20 ? 'Still going, the first load after a fresh download can take a couple of minutes while it sets up. Leaving this page is fine.' : 'Setting up the model for the first time.')
+                    : 'Voice and typed commands will ask it when word matching does not understand something.'}
+                </P>
+              )}
               <Row style={{ gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                {ai.loadError && <Button small icon="refresh" title="Try again" onPress={retryLoad} loading={busy} />}
                 <Button small icon={ai.enabled ? 'pause' : 'play'} kind="secondary" title={ai.enabled ? 'Turn off' : 'Turn on'} onPress={() => ai.setEnabled(!ai.enabled)} />
                 <Button small kind="secondary" icon="trash-outline" tint={A.over} title="Remove model" onPress={remove} loading={busy} />
               </Row>

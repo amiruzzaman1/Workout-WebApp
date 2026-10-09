@@ -30,14 +30,25 @@ export function AiRuntimeProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useAiEnabled();
   const [generation, setGeneration] = useState(0);
   const [llm, setLlm] = useState<Llm | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Loading a model that is already on disk is quick; this only fires once per app open, when enabled and
-  // not already loaded, never a fresh download, that is always the user's own tap.
+  // Loading a model already on disk into memory is usually quick, but not always: the first load after a
+  // fresh install or a manual file import can take a couple of minutes while MediaPipe sets up its GPU
+  // delegate, and on a genuine failure (a corrupt or incomplete file, not enough memory) this used to just
+  // swallow the error and sit on "Loading..." forever with no way to tell the two apart. Now a real failure
+  // is surfaced, and retryLoad below gives a manual way to try again without reimporting the file.
   useEffect(() => {
     if (llm && enabled && llm.downloadStatus === 'downloaded' && !llm.isLoaded) {
-      llm.loadModel().catch(() => {});
+      setLoadError(null);
+      llm.loadModel().catch((e: any) => setLoadError(e?.message ?? 'Could not load the model.'));
     }
   }, [enabled, llm]);
+
+  const retryLoad = useCallback(async () => {
+    if (!llm) return;
+    setLoadError(null);
+    try { await llm.loadModel(); } catch (e: any) { setLoadError(e?.message ?? 'Could not load the model.'); }
+  }, [llm]);
 
   const download = useCallback(async () => {
     if (!llm) return;
@@ -84,6 +95,7 @@ export function AiRuntimeProvider({ children }: { children: ReactNode }) {
     available: true, enabled, setEnabled,
     status: llm?.downloadStatus ?? 'not_downloaded', progress: llm?.downloadProgress ?? 0,
     error: llm?.downloadError ?? null, isLoaded: llm?.isLoaded ?? false,
+    loadError, retryLoad,
     download, cancelDownload, remove, importLocalFile, ask,
   };
 
