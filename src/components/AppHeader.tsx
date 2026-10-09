@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DAY_NAMES } from '../lib/planner';
 import { todayISO } from '../lib/progress';
@@ -68,7 +68,7 @@ export function AppHeader() {
     <View style={{ backgroundColor: C.bg, paddingTop: insets.top + 12, paddingBottom: 6 }}>
       <View style={s.bar}>
         <Pressable onPress={() => router.push('/user')} style={(st) => [s.avatar, smooth, hovered(st) && { borderColor: A.protein, backgroundColor: C.border }, st.pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="User page">
-          <Text style={s.initials}>{initials}</Text>
+          {profile.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={s.avatarImg} /> : <Text style={s.initials}>{initials}</Text>}
         </Pressable>
 
         <View style={[s.brand, narrow && s.brandFlow]} pointerEvents="none">
@@ -124,7 +124,8 @@ export function AppHeader() {
 
 const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 20 },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card2, borderWidth: 1, borderColor: C.borderStrong, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card2, borderWidth: 1, borderColor: C.borderStrong, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: '100%', height: '100%' },
   initials: { color: C.text, fontFamily: F.display, fontSize: 14, letterSpacing: -0.3 },
   brand: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   brandFlow: { position: 'relative', flex: 1 },

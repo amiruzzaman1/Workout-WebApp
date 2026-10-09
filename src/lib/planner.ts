@@ -9,6 +9,7 @@ import { getExercise, isAvailable } from './exercises';
 export type Profile = {
   id: string;
   display_name: string | null;
+  avatar_url?: string | null;
   experience: 'beginner' | 'intermediate';
   goal: 'muscle' | 'fat_loss' | 'strength' | 'general' | 'recomp';
   training_days: number[];

@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCharacter } from '../../../src/components/CoachCharacter';
 import { Card, Eyebrow, hovered, HoverTip, P, Row, Screen, Section, smooth, usePageWidth } from '../../../src/components/ui';
 import { COACHES, CoachStyle, useCoachStyle } from '../../../src/lib/coachStyle';
@@ -29,8 +30,10 @@ function shift(isoDay: string, days: number) {
 }
 
 export default function UserScreen() {
-  const { profile, session, signOut, foodEntries, logs, weights, sleep } = useStore();
+  const { profile, session, signOut, uploadAvatar, removeAvatar, foodEntries, logs, weights, sleep } = useStore();
   const router = useRouter();
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [coachStyle, setCoachStyle] = useCoachStyle();
   // Two coach cards side by side: each picture fills its card, and never gets taller than it needs to be.
   const coachW = Math.floor((usePageWidth() - 12) / 2) - 20;
@@ -68,6 +71,39 @@ export default function UserScreen() {
   const workouts = new Set(logs.map((l) => l.performed_on)).size;
   const weekly = t.ready && t.weeklyKg ? `${t.weeklyKg > 0 ? 'Gain' : 'Lose'} ${Math.abs(t.weeklyKg).toFixed(2)} kg a week` : 'Hold steady';
 
+  /** Picks a photo from the gallery (works the same in a browser and on the phone) and uploads it as the avatar. */
+  async function changePhoto() {
+    setAvatarError(null);
+    if (Platform.OS !== 'web') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setAvatarError('Allow photo access in your phone settings to change your picture.'); return; }
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.6 });
+    if (result.canceled || !result.assets?.length) return;
+    setAvatarBusy(true);
+    try {
+      await uploadAvatar(result.assets[0].uri);
+    } catch (e: any) {
+      setAvatarError(e?.message ?? 'Could not upload that photo. Check your connection and try again.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removePhoto() {
+    setAvatarError(null);
+    if (await confirm('Remove your photo?', 'Your initials will show instead.', { confirmText: 'Remove' })) {
+      setAvatarBusy(true);
+      try {
+        await removeAvatar();
+      } catch (e: any) {
+        setAvatarError(e?.message ?? 'Could not remove the photo.');
+      } finally {
+        setAvatarBusy(false);
+      }
+    }
+  }
+
   async function logOut() {
     if (await confirm('Log out?', 'You will need to sign in again to see your data.', { confirmText: 'Log out' })) await signOut();
   }
@@ -76,9 +112,13 @@ export default function UserScreen() {
     <Screen top>
       <Eyebrow>User</Eyebrow>
       <View style={st.head}>
-        <View style={st.avatarRing}>
-          <View style={st.avatar}><Text style={st.initials}>{initials}</Text></View>
-        </View>
+        <Pressable onPress={changePhoto} disabled={avatarBusy} accessibilityRole="button" accessibilityLabel="Change your photo" style={(p) => [st.avatarRing, smooth, hovered(p) && { borderColor: A.up }, p.pressed && { opacity: 0.85 }]}>
+          <View style={st.avatar}>
+            {profile.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={st.avatarImg} /> : <Text style={st.initials}>{initials}</Text>}
+            {avatarBusy && <View style={st.avatarBusy}><ActivityIndicator color={C.text} /></View>}
+          </View>
+          <View style={st.avatarBadge}><Ionicons name="camera" size={13} color={C.inverseText} /></View>
+        </Pressable>
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={st.nameRow}>
             <Text style={st.name} numberOfLines={1}>{name}</Text>
@@ -91,6 +131,13 @@ export default function UserScreen() {
           </View>
           <Text style={st.meta} numberOfLines={1}>{session?.user.email}</Text>
           {joined && <Text style={st.meta}>Member since {MONTHS[joined.getMonth()]} {joined.getFullYear()}</Text>}
+          <Row style={{ gap: 10, marginTop: 4 }}>
+            <Pressable onPress={changePhoto} hitSlop={6} accessibilityRole="button" style={(p) => [smooth, hovered(p) && { opacity: 0.8 }]}><Text style={st.photoLink}>Change photo</Text></Pressable>
+            {!!profile.avatar_url && (
+              <Pressable onPress={removePhoto} hitSlop={6} accessibilityRole="button" style={(p) => [smooth, hovered(p) && { opacity: 0.8 }]}><Text style={[st.photoLink, { color: C.muted }]}>Remove</Text></Pressable>
+            )}
+          </Row>
+          {!!avatarError && <Text style={st.avatarError}>{avatarError}</Text>}
         </View>
       </View>
 
@@ -295,7 +342,12 @@ const st = StyleSheet.create({
   logoutText: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatarRing: { width: 76, height: 76, borderRadius: 38, borderWidth: 2, borderColor: A.protein, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: '100%', height: '100%' },
+  avatarBusy: { ...StyleSheet.absoluteFill, backgroundColor: C.bg + 'aa', alignItems: 'center', justifyContent: 'center' },
+  avatarBadge: { position: 'absolute', right: -2, bottom: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: A.up, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
+  photoLink: { color: A.up, fontFamily: F.bodySemi, fontSize: 12 },
+  avatarError: { color: C.danger, fontFamily: F.body, fontSize: 12, marginTop: 4 },
   initials: { color: C.text, fontFamily: F.display, fontSize: 24, letterSpacing: -0.5 },
   name: { color: C.text, fontFamily: F.display, fontSize: 22, letterSpacing: -0.5 },
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 17 },

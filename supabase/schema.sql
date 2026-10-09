@@ -341,3 +341,24 @@ drop policy if exists "own recipes" on public.recipes;
 create policy "own recipes" on public.recipes for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.recipes to authenticated;
+
+-- v14: profile photo. The file itself lives in Supabase Storage (bucket avatars), one file per user
+-- (<user id>/avatar.jpg, overwritten on a new photo); the profile row just keeps its address.
+alter table public.profiles add column if not exists avatar_url text;
+
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+drop policy if exists "avatar read" on storage.objects;
+create policy "avatar read" on storage.objects for select
+  using (bucket_id = 'avatars');
+drop policy if exists "avatar write own" on storage.objects;
+create policy "avatar write own" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "avatar update own" on storage.objects;
+create policy "avatar update own" on storage.objects for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+drop policy if exists "avatar delete own" on storage.objects;
+create policy "avatar delete own" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);

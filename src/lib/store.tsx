@@ -58,6 +58,8 @@ type Store = {
   logWeight: (row: WeightLog) => Promise<void>;
   deleteWeight: (day: string) => Promise<void>;
   saveProfile: (p: Partial<Profile>) => Promise<Profile>;
+  uploadAvatar: (uri: string) => Promise<string>;
+  removeAvatar: () => Promise<void>;
   savePlan: (data: PlanData) => Promise<void>;
   regeneratePlan: (p?: Profile) => Promise<void>;
   toggleEquipment: (key: string) => Promise<void>;
@@ -287,6 +289,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [session, profile, ready],
   );
+
+  /** Picked photo (a local file or blob address) uploaded as this user's avatar. Returns the address to show it from. */
+  const uploadAvatar = useCallback(
+    async (uri: string) => {
+      if (!session) throw new Error('Not signed in');
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      const path = `${session.user.id}/avatar.jpg`;
+      const { error } = await supabase.storage.from('avatars').upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: true });
+      if (error) throw new Error(error.message);
+      // Same file name every time a photo is changed, so a fresh tag on the end is what makes the new one actually show instead of a cached old one.
+      const url = `${supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl}?t=${Date.now()}`;
+      await saveProfile({ avatar_url: url });
+      return url;
+    },
+    [session, saveProfile],
+  );
+
+  const removeAvatar = useCallback(async () => {
+    if (!session) throw new Error('Not signed in');
+    await supabase.storage.from('avatars').remove([`${session.user.id}/avatar.jpg`]);
+    await saveProfile({ avatar_url: null });
+  }, [session, saveProfile]);
 
   const savePlan = useCallback(
     async (data: PlanData) => {
@@ -538,7 +563,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
     sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
-    saveProfile, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
+    saveProfile, uploadAvatar, removeAvatar, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
