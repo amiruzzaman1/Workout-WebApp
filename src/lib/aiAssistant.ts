@@ -84,8 +84,8 @@ export function useAiEnabled(): [boolean, (v: boolean) => void] {
  *  user's own real names mixed in so it reaches for a real match instead of inventing a plausible sounding one. */
 function systemPrompt(ctx: VoiceContext): string {
   const foods = ctx.knownFoods.slice(0, 40).map((f) => f.name).join(', ') || 'none yet';
-  const tasks = ctx.todayTasks.map((t) => t.title).join(', ') || 'none';
-  const reminders = ctx.reminders.map((r) => r.title).join(', ') || 'none';
+  const tasks = ctx.todayTasks.slice(0, 30).map((t) => t.title).join(', ') || 'none';
+  const reminders = ctx.reminders.slice(0, 30).map((r) => r.title).join(', ') || 'none';
   const categories = ctx.categories.join(', ');
   const exercises = ctx.exercises.slice(0, 60).map((e) => e.name).join(', ');
   return [
@@ -105,8 +105,8 @@ function systemPrompt(ctx: VoiceContext): string {
     '- add_reminder: {kind,label,time,repeat}  (time like "09:00", repeat one of once,daily,weekly,monthly,yearly)',
     '- delete_reminder: {kind,label}',
     '- log_set: {kind,label,sets,reps,weight}  (label a real exercise name, sets defaults to 1, weight omitted means bodyweight)',
-    '- sleep_start: {kind}  (going to bed, right now)',
-    '- sleep_end: {kind}  (just woke up, right now)',
+    '- sleep_start: {kind,time}  (going to bed; time optional, like "23:00", only if a clock time was actually said, otherwise omit it for right now)',
+    '- sleep_end: {kind,time}  (woke up; time optional, same rule, omit it for right now)',
     '- unknown: {kind}  (use this whenever nothing above genuinely fits, never force a guess)',
     `Foods already logged or saved by this user: ${foods}.`,
     `Today's tasks: ${tasks}. Reminders: ${reminders}. Time categories: ${categories}.`,
@@ -204,9 +204,9 @@ export function resolveLlmOutput(raw: string, ctx: VoiceContext): VoiceIntent {
       return { kind: 'log_set', exercise, sets, reps: Math.round(reps), weight, unit: weight != null ? 'kg' : 'bw' };
     }
     case 'sleep_start':
-      return { kind: 'sleep_start', time: nowClock() };
+      return { kind: 'sleep_start', time: (typeof o.time === 'string' && parseTime(o.time)) || nowClock() };
     case 'sleep_end':
-      return { kind: 'sleep_end', time: nowClock() };
+      return { kind: 'sleep_end', time: (typeof o.time === 'string' && parseTime(o.time)) || nowClock() };
     default:
       return fallback;
   }

@@ -39,8 +39,10 @@ export function isDestructive(kind: VoiceIntent['kind']): boolean {
 }
 
 // A decimal point stays in, so a spoken weight like "82.3" survives normalizing; addsPunctuation is off when
-// listening, so a stray full stop here is always part of a number, never sentence punctuation.
-export const norm = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9'. ]+/g, ' ').replace(/\s+/g, ' ').trim();
+// listening, so a stray full stop here is always part of a number, never sentence punctuation. A colon stays
+// in too, so a stated clock time like "11:30" survives for parseTime() to read, rather than becoming "11 30"
+// and losing its minutes.
+export const norm = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9':. ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 const NUMBER_WORDS: Record<string, number> = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -236,8 +238,8 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
   // Going to bed or waking up: the same two things the Sleep card's "Bed now" and "Woke now" buttons already
   // do, just said instead of tapped. The clock time is captured once here, not read again at save time, so
   // what is shown on the confirm card is exactly what gets saved even if a few seconds pass before you confirm.
-  if (/\b(?:going|heading|off) to (?:bed|sleep)\b|\bi'?m going to sleep\b|\bgoodnight\b/.test(t)) return { kind: 'sleep_start', time: nowClock() };
-  if (/\b(?:just )?woke up\b|\bwaking up\b|\bi'?m awake\b|\bgood morning\b/.test(t)) return { kind: 'sleep_end', time: nowClock() };
+  if (/\b(?:going|heading|off) to (?:bed|sleep)\b|\bi'?m going to sleep\b|\bgoodnight\b/.test(t)) return { kind: 'sleep_start', time: parseTime(t) ?? nowClock() };
+  if (/\b(?:just )?woke up\b|\bwaking up\b|\bi'?m awake\b|\bgood morning\b/.test(t)) return { kind: 'sleep_end', time: parseTime(t) ?? nowClock() };
 
   // "start", "track", "time tracker" and "log time" are all the same request in plain speech, and the words
   // "timer", "tracker", "time" and "tracking" are the name of the feature, not part of the activity's own

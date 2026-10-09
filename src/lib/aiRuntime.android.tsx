@@ -20,7 +20,14 @@ type Llm = DownloadableLlmReturn;
 function LlmBridge({ onChange }: { onChange: (llm: Llm) => void }) {
   const llm = useLLM({
     modelName: MODEL_NAME, modelUrl: MODEL_URL,
-    maxTokens: 256, topK: 40, temperature: 0.2, randomSeed: 7,
+    // maxTokens is the whole session's budget, prompt and reply together, fixed once at load time (it is
+    // what sizes the native engine's buffers, see LlmInferenceOptions.setMaxTokens in the native module).
+    // It was 256: the written contract in aiAssistant.ts's systemPrompt() alone, with a realistic number of
+    // foods and exercises filled in, comes to roughly 900 tokens, so every real request was already well
+    // past the buffer the engine had allocated for the whole exchange. That is not a graceful "too long"
+    // error on this engine, it is a native overflow, which takes the whole app down with it rather than
+    // just the one request, matching "the app shuts down automatically" when a command reaches the model.
+    maxTokens: 2048, topK: 40, temperature: 0.2, randomSeed: 7,
   });
   useEffect(() => { onChange(llm); }, [llm, onChange]);
   return null;
