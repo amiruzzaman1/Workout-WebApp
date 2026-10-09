@@ -4,12 +4,14 @@
 // each one a real, named thing the app already knows how to do (add, change or remove something); anything that
 // does not match one of them comes back as 'unknown' rather than a wrong guess, and the caller always shows a
 // confirm screen before anything is saved or removed, with a stronger, separate confirmation for deletes.
+import { Exercise } from './exercises';
 import { libToFood, searchLibrary } from './foodData';
 import { Food, FoodEntry, Meal } from './nutrition';
 import { Goal } from './planner';
+import { Unit } from './progress';
 import { gramsOf, RecipeUnit } from './recipes';
 import { Reminder, Repeat } from './reminders';
-import { TaskItem } from './tracker';
+import { nowClock, TaskItem } from './tracker';
 import { recallSync } from './voiceDictionary';
 
 export type VoiceIntent =
@@ -26,6 +28,9 @@ export type VoiceIntent =
   | { kind: 'set_fitness_goal'; goal: Goal; label: string }
   | { kind: 'add_reminder'; title: string; time: string; repeat: Repeat; date: string | null; guessedTime: boolean }
   | { kind: 'delete_reminder'; reminder: Reminder }
+  | { kind: 'log_set'; exercise: Exercise; sets: number; reps: number; weight: number | null; unit: Unit }
+  | { kind: 'sleep_start'; time: string }
+  | { kind: 'sleep_end'; time: string }
   | { kind: 'unknown'; transcript: string };
 
 /** Which of these actions remove something, so the caller can ask twice before doing it. */
@@ -219,7 +224,7 @@ const REPEAT_WORDS: [RegExp, Repeat][] = [
 
 export type VoiceContext = {
   knownFoods: Food[]; categories: string[]; runningLabel: string | null;
-  todayTasks: TaskItem[]; todayFoodEntries: FoodEntry[]; reminders: Reminder[];
+  todayTasks: TaskItem[]; todayFoodEntries: FoodEntry[]; reminders: Reminder[]; exercises: Exercise[];
 };
 
 export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceIntent {
@@ -228,12 +233,24 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
 
   if (ctx.runningLabel && /\b(stop|end|finish|pause)\b/.test(t)) return { kind: 'stop_timer' };
 
-  const startMatch = t.match(/\b(?:start|begin|starting|resume)\b\s*(?:my\s+)?(.*)/);
+  // Going to bed or waking up: the same two things the Sleep card's "Bed now" and "Woke now" buttons already
+  // do, just said instead of tapped. The clock time is captured once here, not read again at save time, so
+  // what is shown on the confirm card is exactly what gets saved even if a few seconds pass before you confirm.
+  if (/\b(?:going|heading|off) to (?:bed|sleep)\b|\bi'?m going to sleep\b|\bgoodnight\b/.test(t)) return { kind: 'sleep_start', time: nowClock() };
+  if (/\b(?:just )?woke up\b|\bwaking up\b|\bi'?m awake\b|\bgood morning\b/.test(t)) return { kind: 'sleep_end', time: nowClock() };
+
+  // "start", "track", "time tracker" and "log time" are all the same request in plain speech, and the words
+  // "timer", "tracker", "time" and "tracking" are the name of the feature, not part of the activity's own
+  // name, so they get stripped along with the usual filler words before anything else looks at what is left.
+  const startMatch = t.match(/\b(?:start|begin|starting|resume|track|tracking|time tracker|log time)\b\s*(?:my\s+)?(.*)/);
   if (startMatch) {
-    const rest = startMatch[1].trim().replace(/\b(timer|routine|session)\b/g, '').trim();
+    const rest = startMatch[1].trim().replace(/\b(timer|routine|session|tracker|tracking|track|time|for|a|an|the|my)\b/g, '').replace(/\s+/g, ' ').trim();
     const learned = recallSync(rest);
     if (learned?.kind === 'timer') return { kind: 'start_timer', label: learned.label, isGym: learned.isGym, category: findCategory(learned.label, ctx.categories) };
     const isGym = /\bgym\b|\bworkout\b|\blifting\b|\blift\b/.test(rest) || /\bgym\b|\bworkout\b/.test(t);
+    // Nothing recognisable was actually said (just "start a timer" on its own): ask again rather than
+    // quietly guessing Gym, which is what used to happen here.
+    if (!rest && !isGym) return { kind: 'unknown', transcript };
     const label = cleanLabel(rest) || 'Gym';
     return { kind: 'start_timer', label, isGym, category: findCategory(rest, ctx.categories) };
   }
@@ -308,6 +325,24 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
   if (taskMatch && taskMatch[1].trim()) {
     const title = taskMatch[1].replace(/\btoday\b|\btomorrow\b/g, '').trim();
     return { kind: 'add_task', title: cleanLabel(title), category: findCategory(title, ctx.categories) };
+  }
+
+  // A set logged for an exercise is only tried when "reps" or "sets" is actually said, so it never steals a
+  // plain food log ("log my oats") just because both start with the word "log".
+  if (/\b(?:log|did|do|record|finished|completed)\b/.test(t) && /\b(?:reps?|sets?)\b/.test(t)) {
+    const setsM = t.match(/(\d+)\s*sets?\b/);
+    const repsM = t.match(/(\d+)\s*reps?\b/);
+    const weightM = t.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilo|kilos|kilogram|kilograms)\b/);
+    const bodyweight = /\bbody\s*weight\b|\bbodyweight\b|\bno weight\b|\bwith no weight\b/.test(t);
+    const nameM = t.match(/\b(?:for|on|of)\s+(.+?)(?:\s+for\s+\d+\s*reps?)?$/);
+    const exercise = nameM ? findByTitle(nameM[1], ctx.exercises, (x) => x.name) : null;
+    if (exercise && repsM) {
+      return {
+        kind: 'log_set', exercise, sets: setsM ? Number(setsM[1]) : 1, reps: Number(repsM[1]),
+        weight: bodyweight ? null : weightM ? Number(weightM[1]) : null,
+        unit: bodyweight ? 'bw' : weightM ? 'kg' : 'bw',
+      };
+    }
   }
 
   const foodMatch = t.match(/\b(?:log|ate|had|eating|drank|add)\b\s*(.*)/);

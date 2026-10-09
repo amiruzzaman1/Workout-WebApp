@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { Food, FoodEntry, Meal } from './nutrition';
 import { Goal } from './planner';
 import { Reminder, Repeat } from './reminders';
-import { TaskItem } from './tracker';
+import { nowClock, TaskItem } from './tracker';
 import {
   findByTitle, findFood, GOAL_LABEL, GOAL_WORDS, mealForNow, parseNumber, parseTime, parseUnit, resolveAmount, VoiceContext, VoiceIntent,
 } from './voiceParse';
@@ -72,6 +72,7 @@ function systemPrompt(ctx: VoiceContext): string {
   const tasks = ctx.todayTasks.map((t) => t.title).join(', ') || 'none';
   const reminders = ctx.reminders.map((r) => r.title).join(', ') || 'none';
   const categories = ctx.categories.join(', ');
+  const exercises = ctx.exercises.slice(0, 60).map((e) => e.name).join(', ');
   return [
     'You turn one sentence from the user of a fitness app into exactly one JSON object, nothing else, no words before or after it, no markdown fences.',
     'Pick the single closest "kind" from this list, and only use fields that kind needs:',
@@ -88,9 +89,13 @@ function systemPrompt(ctx: VoiceContext): string {
     '- set_fitness_goal: {kind,goal}  (goal one of recomp,muscle,fat_loss,strength,general)',
     '- add_reminder: {kind,label,time,repeat}  (time like "09:00", repeat one of once,daily,weekly,monthly,yearly)',
     '- delete_reminder: {kind,label}',
+    '- log_set: {kind,label,sets,reps,weight}  (label a real exercise name, sets defaults to 1, weight omitted means bodyweight)',
+    '- sleep_start: {kind}  (going to bed, right now)',
+    '- sleep_end: {kind}  (just woke up, right now)',
     '- unknown: {kind}  (use this whenever nothing above genuinely fits, never force a guess)',
     `Foods already logged or saved by this user: ${foods}.`,
     `Today's tasks: ${tasks}. Reminders: ${reminders}. Time categories: ${categories}.`,
+    `Exercises: ${exercises}.`,
     'label should name a real thing from those lists when deleting or logging something that already exists.',
   ].join('\n');
 }
@@ -175,6 +180,18 @@ export function resolveLlmOutput(raw: string, ctx: VoiceContext): VoiceIntent {
       const reminder = label ? findByTitle<Reminder>(label, ctx.reminders, (x) => x.title) : null;
       return reminder ? { kind: 'delete_reminder', reminder } : fallback;
     }
+    case 'log_set': {
+      const exercise = label ? findByTitle(label, ctx.exercises, (x) => x.name) : null;
+      const reps = typeof o.reps === 'number' ? o.reps : parseNumber(String(o.reps ?? ''));
+      if (!exercise || reps == null) return fallback;
+      const sets = typeof o.sets === 'number' && o.sets > 0 ? Math.round(o.sets) : 1;
+      const weight = typeof o.weight === 'number' ? o.weight : parseNumber(String(o.weight ?? ''));
+      return { kind: 'log_set', exercise, sets, reps: Math.round(reps), weight, unit: weight != null ? 'kg' : 'bw' };
+    }
+    case 'sleep_start':
+      return { kind: 'sleep_start', time: nowClock() };
+    case 'sleep_end':
+      return { kind: 'sleep_end', time: nowClock() };
     default:
       return fallback;
   }

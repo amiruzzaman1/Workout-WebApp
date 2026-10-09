@@ -5,12 +5,13 @@ import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Modal, Platform
 import { buildPrompt, resolveLlmOutput } from '../lib/aiAssistant';
 import { useAiRuntime } from '../lib/aiRuntime';
 import { confirm as confirmDialog } from '../lib/confirm';
+import { EXERCISES } from '../lib/exercises';
 import { entryToFood, MEAL_LABELS, round, scaleFood } from '../lib/nutrition';
 import { recipeToFood } from '../lib/recipes';
 import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
-import { fmt12, segmentsOf } from '../lib/tracker';
+import { fmt12, isTime, minutesBetween, segmentsOf } from '../lib/tracker';
 import { isDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
@@ -30,6 +31,7 @@ export function VoiceCommand() {
     activities, addActivity, updateActivity, activeVisit, startVisit, endVisit,
     tasks, addTask, deleteTask, myFoods, sharedFoods, foodEntries, recipes, addFoodEntry, deleteFoodEntry,
     reminders, addReminder, deleteReminder, water, setWater, logWeight, saveProfile,
+    customExercises, logs, addLog, sleep, saveSleep,
   } = useStore();
   const { categories } = useTimeCategories();
   const ai = useAiRuntime();
@@ -61,6 +63,8 @@ export function VoiceCommand() {
 
   const todayFoodEntries = foodEntries.filter((e) => e.eaten_on === todayISO());
   const todayTasks = tasks.filter((t) => t.day === todayISO());
+  const exercises = [...EXERCISES, ...customExercises];
+  const todaySleep = sleep.find((s) => s.night_of === todayISO()) ?? null;
 
   async function finish(said: string) {
     ExpoSpeechRecognitionModule.stop();
@@ -70,7 +74,7 @@ export function VoiceCommand() {
       ...sharedFoods, ...myFoods, ...recipes.map(recipeToFood),
       ...[...foodEntries].reverse().slice(0, 150).map(entryToFood),
     ];
-    const ctx: VoiceContext = { knownFoods, categories, runningLabel, todayTasks, todayFoodEntries, reminders };
+    const ctx: VoiceContext = { knownFoods, categories, runningLabel, todayTasks, todayFoodEntries, reminders, exercises };
     const parsed = parseVoiceCommand(said, ctx);
     // The instant word matching above handles most phrasings for free; the on-device model, when you have
     // turned it on in User settings, only ever gets asked when that fast path genuinely found nothing, since
@@ -117,6 +121,7 @@ export function VoiceCommand() {
     for (const t of todayTasks) w.add(t.title);
     for (const r of reminders) w.add(r.title);
     for (const c of categories) w.add(c);
+    for (const e of exercises.slice(0, 80)) w.add(e.name);
     return [...w];
   }
 
@@ -191,6 +196,20 @@ export function VoiceCommand() {
       await addReminder({ title: it.title, remind_time: it.time, repeat: it.repeat, remind_date: it.date });
     } else if (it.kind === 'delete_reminder') {
       await deleteReminder(it.reminder.id);
+    } else if (it.kind === 'log_set') {
+      const already = logs.filter((l) => l.performed_on === todayISO() && l.exercise_id === it.exercise.id).length;
+      for (let i = 0; i < it.sets; i++) {
+        await addLog({
+          performed_on: todayISO(), exercise_id: it.exercise.id, set_number: already + i + 1,
+          reps: it.reps, weight_kg: it.weight, unit: it.unit, session_title: null, target_reps: null, metric: 'reps',
+        });
+      }
+    } else if (it.kind === 'sleep_start') {
+      await saveSleep({ night_of: todayISO(), bed_time: it.time, wake_time: todaySleep?.wake_time ?? null, minutes: null });
+    } else if (it.kind === 'sleep_end') {
+      const bed = todaySleep?.bed_time ?? null;
+      const minutes = bed && isTime(bed) ? minutesBetween(bed, it.time) : null;
+      await saveSleep({ night_of: todayISO(), bed_time: bed, wake_time: it.time, minutes });
     }
   }
 
@@ -206,7 +225,7 @@ export function VoiceCommand() {
               <>
                 <PulsingMic />
                 <Text style={s.hint}>Listening{partial ? '' : '…'}</Text>
-                <Text style={s.transcript} numberOfLines={3}>{partial || 'Say something, like "log two eggs for breakfast", "start my gym routine", or "remind me to take my medicine every day".'}</Text>
+                <Text style={s.transcript} numberOfLines={3}>{partial || 'Say something, like "log 3 sets of 10 at 60 kg for bench press", "track my study time", or "I\'m going to sleep".'}</Text>
                 <View style={s.orRow}><View style={s.orLine} /><Text style={s.orText}>or type it</Text><View style={s.orLine} /></View>
                 <Input value={typed} onChangeText={setTyped} placeholder="Type a command instead" onSubmitEditing={send} returnKeyType="send" style={{ width: '100%' }} />
                 <Row style={{ gap: 8, marginTop: 10, width: '100%' }}>
@@ -330,6 +349,25 @@ function ConfirmCard({ intent, transcript, fromAi, onConfirm, onRetry, onCancel 
         <>
           <Ionicons name="trash-outline" size={28} color={A.over} />
           <Text style={s.title}>Delete reminder: {intent.reminder.title}</Text>
+        </>
+      )}
+      {intent.kind === 'log_set' && (
+        <>
+          <Ionicons name="barbell-outline" size={28} color={A.fat} />
+          <Text style={s.title}>{intent.exercise.name}</Text>
+          <Text style={s.hint}>{intent.sets} set{intent.sets === 1 ? '' : 's'} of {intent.reps} reps{intent.weight != null ? ` at ${intent.weight} kg` : ', bodyweight'}</Text>
+        </>
+      )}
+      {intent.kind === 'sleep_start' && (
+        <>
+          <Ionicons name="moon-outline" size={28} color={'#8f9bff'} />
+          <Text style={s.title}>Going to bed, {fmt12(intent.time)}</Text>
+        </>
+      )}
+      {intent.kind === 'sleep_end' && (
+        <>
+          <Ionicons name="sunny-outline" size={28} color={A.carbs} />
+          <Text style={s.title}>Woke up, {fmt12(intent.time)}</Text>
         </>
       )}
       {intent.kind === 'log_food' && (
