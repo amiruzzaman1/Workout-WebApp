@@ -12,7 +12,7 @@ import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
 import { fmt12, isTime, minutesBetween, segmentsOf } from '../lib/tracker';
-import { isDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
+import { hasDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
 import { speak, stopSpeaking, useSpeakEnabled } from '../lib/speech';
@@ -145,10 +145,11 @@ export function VoiceCommand() {
   async function confirm() {
     if (!intent) return;
     // Removing something gets asked twice: once by the confirm card everything already goes through, and
-    // again here, the same native-feeling prompt every delete button elsewhere in Forge already uses.
-    if (isDestructive(intent.kind)) {
-      const label = intent.kind === 'delete_task' ? intent.task.title : intent.kind === 'delete_reminder' ? intent.reminder.title : intent.kind === 'delete_food' ? intent.entry.name : '';
-      if (!(await confirmDialog('Delete this?', `"${label}" will be removed.`, { confirmText: 'Delete', danger: true }))) return;
+    // again here, the same native-feeling prompt every delete button elsewhere in Forge already uses. A
+    // 'multi' command can have more than one delete buried in it, so every one of them gets named.
+    if (hasDestructive(intent)) {
+      const labels = deleteLabels(intent);
+      if (!(await confirmDialog('Delete this?', `${labels.map((l) => `"${l}"`).join(', ')} will be removed.`, { confirmText: 'Delete', danger: true }))) return;
     }
     setPhase('saving');
     try {
@@ -162,6 +163,10 @@ export function VoiceCommand() {
   }
 
   async function act(it: VoiceIntent) {
+    if (it.kind === 'multi') {
+      for (const sub of it.intents) await act(sub);
+      return;
+    }
     if (it.kind === 'start_timer') {
       if (it.isGym) {
         await startVisit(it.label);
@@ -282,10 +287,21 @@ export function VoiceCommand() {
   );
 }
 
+/** The name of the thing being removed, for every delete buried anywhere in an intent (a plain delete, or
+ *  one or more inside a 'multi' command), for the extra "X will be removed" confirmation. */
+function deleteLabels(intent: VoiceIntent): string[] {
+  if (intent.kind === 'multi') return intent.intents.flatMap(deleteLabels);
+  if (intent.kind === 'delete_task') return [intent.task.title];
+  if (intent.kind === 'delete_reminder') return [intent.reminder.title];
+  if (intent.kind === 'delete_food') return [intent.entry.name];
+  return [];
+}
+
 /** What to read out loud for each kind of understood command, a spoken sentence rather than the card's
  *  own short label, kept in sync with ConfirmCard's own text below. */
 function speakable(intent: VoiceIntent): string {
   switch (intent.kind) {
+    case 'multi': return intent.intents.map(speakable).join(' ');
     case 'start_timer': return intent.isGym ? 'Starting a gym session.' : `Starting ${intent.label}.`;
     case 'stop_timer': return 'Stopping the timer.';
     case 'add_task': return `Adding task: ${intent.title}.`;
@@ -324,6 +340,35 @@ function ConfirmCard({ intent, transcript, fromAi, onConfirm, onRetry, onCancel 
     <>
       {fromAi && <View style={s.aiTag}><Ionicons name="sparkles" size={11} color={A.core} /><Text style={s.aiTagText}>AI guess</Text></View>}
       <Text style={s.heard}>"{transcript}"</Text>
+      {intent.kind === 'multi' ? (
+        <View style={{ width: '100%', gap: 4 }}>
+          {intent.intents.map((sub, i) => (
+            <View key={i} style={[{ alignItems: 'center', paddingVertical: 10 }, i > 0 && s.multiDivider]}>
+              <IntentBody intent={sub} fromAi={fromAi} />
+            </View>
+          ))}
+        </View>
+      ) : (
+        <IntentBody intent={intent} fromAi={fromAi} />
+      )}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {intent.kind !== 'unknown' && (
+          hasDestructive(intent)
+            ? <Button kind="secondary" icon="trash-outline" tint={A.over} title="Delete" onPress={onConfirm} />
+            : <Button icon="checkmark" title="Confirm" onPress={onConfirm} />
+        )}
+        <Button kind="secondary" icon="mic" title="Try again" onPress={onRetry} />
+        <Button kind="secondary" title="Cancel" onPress={onCancel} />
+      </View>
+    </>
+  );
+}
+
+/** The icon, title and hint for exactly one understood command, the same body whether it is the only thing
+ *  shown on the confirm card or one row inside a 'multi' command's stacked list. */
+function IntentBody({ intent, fromAi }: { intent: VoiceIntent; fromAi: boolean }) {
+  return (
+    <>
       {intent.kind === 'start_timer' && (
         <>
           <Ionicons name="play-circle" size={30} color={A.up} />
@@ -439,15 +484,6 @@ function ConfirmCard({ intent, transcript, fromAi, onConfirm, onRetry, onCancel 
           </Text>
         </>
       )}
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {intent.kind !== 'unknown' && (
-          isDestructive(intent.kind)
-            ? <Button kind="secondary" icon="trash-outline" tint={A.over} title="Delete" onPress={onConfirm} />
-            : <Button icon="checkmark" title="Confirm" onPress={onConfirm} />
-        )}
-        <Button kind="secondary" icon="mic" title="Try again" onPress={onRetry} />
-        <Button kind="secondary" title="Cancel" onPress={onCancel} />
-      </View>
     </>
   );
 }
@@ -527,4 +563,5 @@ const s = StyleSheet.create({
   aiTag: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.card2, borderWidth: 1, borderColor: A.core, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   aiTagText: { color: A.core, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase' },
   speakToggle: { position: 'absolute', top: 10, left: 10, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
+  multiDivider: { borderTopWidth: 1, borderTopColor: C.border },
 });

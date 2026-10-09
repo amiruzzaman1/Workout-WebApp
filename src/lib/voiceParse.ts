@@ -31,11 +31,18 @@ export type VoiceIntent =
   | { kind: 'log_set'; exercise: Exercise; sets: number; reps: number; weight: number | null; unit: Unit }
   | { kind: 'sleep_start'; time: string }
   | { kind: 'sleep_end'; time: string }
+  | { kind: 'multi'; intents: VoiceIntent[] }
   | { kind: 'unknown'; transcript: string };
 
 /** Which of these actions remove something, so the caller can ask twice before doing it. */
 export function isDestructive(kind: VoiceIntent['kind']): boolean {
   return kind === 'delete_task' || kind === 'delete_food' || kind === 'delete_reminder';
+}
+
+/** Same thing, but looking inside a 'multi' command too, since "delete the task to call mum and start my
+ *  gym timer" still needs the stronger delete confirmation even though deleting is not the whole command. */
+export function hasDestructive(intent: VoiceIntent): boolean {
+  return intent.kind === 'multi' ? intent.intents.some(hasDestructive) : isDestructive(intent.kind);
 }
 
 // A decimal point stays in, so a spoken weight like "82.3" survives normalizing; addsPunctuation is off when
@@ -229,7 +236,7 @@ export type VoiceContext = {
   todayTasks: TaskItem[]; todayFoodEntries: FoodEntry[]; reminders: Reminder[]; exercises: Exercise[];
 };
 
-export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceIntent {
+function parseSingle(transcript: string, ctx: VoiceContext): VoiceIntent {
   const t = norm(transcript);
   if (!t) return { kind: 'unknown', transcript };
 
@@ -323,7 +330,7 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
     if (g) return { kind: 'set_fitness_goal', goal: g[1], label: GOAL_LABEL[g[1]] };
   }
 
-  const taskMatch = t.match(/\b(?:remind me to|add (?:a )?task(?: to)?|i need to|new task)\b\s*(.*)/);
+  const taskMatch = t.match(/\b(?:remind me to|add (?:a )?(?:new )?task(?: to)?|i need to|new task(?: to)?)\b\s*(.*)/);
   if (taskMatch && taskMatch[1].trim()) {
     const title = taskMatch[1].replace(/\btoday\b|\btomorrow\b/g, '').trim();
     return { kind: 'add_task', title: cleanLabel(title), category: findCategory(title, ctx.categories) };
@@ -367,4 +374,34 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
   }
 
   return { kind: 'unknown', transcript };
+}
+
+// Checked in this order: the more specific "and then"/"then" first, so "add a task and then start the timer"
+// splits there rather than at the bare "and" it also contains, which would leave a stray "then" on the second
+// half and confuse it.
+const CONNECTORS = [/\band then\b/, /\bthen\b/, /\band also\b/, /\band\b/];
+
+/**
+ * Most commands are one action; "add a task to call the dentist and start my study timer" is two. This tries
+ * splitting on the first connector word found and only actually commits to treating it as two commands if
+ * each half, parsed completely on its own, resolves to something real (not 'unknown'); otherwise it falls
+ * back to parsing the whole sentence as one. That check is what keeps an "and" that is just part of one
+ * phrase, like a reminder "to call mum and dad" or deleting "the eggs and bacon" entry, from being wrongly
+ * split in half: either half alone would come back unknown, so the split is rejected and the original stays
+ * one command.
+ */
+export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceIntent {
+  const t = norm(transcript);
+  for (const connector of CONNECTORS) {
+    const m = t.match(new RegExp(`^(.+?)\\s*${connector.source}\\s*(.+)$`));
+    if (!m) continue;
+    const left = parseSingle(m[1], ctx);
+    if (left.kind === 'unknown') continue;
+    // Recurses on the right half so a third "and" chains further ("...and log 2 eggs and start my timer"),
+    // flattening a nested 'multi' instead of leaving one inside another.
+    const right = parseVoiceCommand(m[2], ctx);
+    if (right.kind === 'unknown') continue;
+    return { kind: 'multi', intents: [left, ...(right.kind === 'multi' ? right.intents : [right])] };
+  }
+  return parseSingle(t, ctx);
 }
