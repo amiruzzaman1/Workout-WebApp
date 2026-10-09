@@ -45,7 +45,8 @@
           "icon": "./assets/android-icon-foreground.png",
           "color": "#000000"
         }
-      ]
+      ],
+      "expo-speech-recognition"
     ],
     "scheme": "workout",
     "extra": {
