@@ -67,8 +67,13 @@ export function AppHeader() {
   return (
     <View style={{ backgroundColor: C.bg, paddingTop: insets.top + 12, paddingBottom: 6 }}>
       <View style={s.bar}>
-        <Pressable onPress={() => router.push('/user')} style={(st) => [s.avatar, smooth, hovered(st) && { borderColor: A.protein, backgroundColor: C.border }, st.pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="User page">
-          {profile.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={s.avatarImg} /> : <Text style={s.initials}>{initials}</Text>}
+        <Pressable onPress={() => router.push('/user')} style={(st) => [s.avatarWrap, smooth, hovered(st) && { transform: [{ scale: 1.05 }] }, st.pressed && { opacity: 0.7 }]} accessibilityRole="button" accessibilityLabel="User page, account settings">
+          {(st: any) => <>
+            <View style={[s.avatar, smooth, hovered(st) && { backgroundColor: C.border }]}>
+              {profile.avatar_url ? <Image source={{ uri: profile.avatar_url }} style={s.avatarImg} /> : <Text style={s.initials}>{initials}</Text>}
+            </View>
+            <View style={s.avatarBadge}><Ionicons name="settings" size={9} color={C.bg} /></View>
+          </>}
         </Pressable>
 
         <View style={[s.brand, narrow && s.brandFlow]} pointerEvents="none">
@@ -124,8 +129,11 @@ export function AppHeader() {
 
 const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 20 },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card2, borderWidth: 1, borderColor: C.borderStrong, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  // The settings cog badge is what makes this read as a button to account settings, not just initials in a circle.
+  avatarWrap: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: C.card2, borderWidth: 1.5, borderColor: A.protein, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarImg: { width: '100%', height: '100%' },
+  avatarBadge: { position: 'absolute', right: 0, bottom: 0, width: 16, height: 16, borderRadius: 8, backgroundColor: A.protein, borderWidth: 2, borderColor: C.bg, alignItems: 'center', justifyContent: 'center' },
   initials: { color: C.text, fontFamily: F.display, fontSize: 14, letterSpacing: -0.3 },
   brand: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   brandFlow: { position: 'relative', flex: 1 },
