@@ -3,15 +3,15 @@ import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Eyebrow, H1, P, Row, Screen } from '../../../src/components/ui';
-import { MODEL_SIZE_GB, MODEL_URL } from '../../../src/lib/aiAssistant';
+import { MODEL_SIZE_MB, MODEL_URL } from '../../../src/lib/aiAssistant';
 import { useAiRuntime } from '../../../src/lib/aiRuntime';
 import { confirm } from '../../../src/lib/confirm';
 import { A, C, F, R } from '../../../src/lib/theme';
 
 /**
- * The optional on-device model (a small AI, Gemma 3n, running fully on your phone). Off by default, a 3 GB
- * one-off download, and only ever asked when the instant word matching behind voice commands has already
- * given up on a phrase, since that free, built in matching already covers most of what you would say.
+ * The optional on-device model (a small AI, Gemma 3, running fully on your phone). Off by default, a one-off
+ * download, and only ever asked when the instant word matching behind voice commands has already given up
+ * on a phrase, since that free, built in matching already covers most of what you would say.
  */
 export default function AiSettings() {
   const ai = useAiRuntime();
@@ -75,7 +75,7 @@ export default function AiSettings() {
       <H1>AI assistant</H1>
       <P muted style={{ fontSize: 13, lineHeight: 19 }}>
         Voice and typed commands already understand a lot without this, through plain word matching, free and
-        instant. This adds a small AI model (Gemma 3n) that only gets asked when that matching genuinely does
+        instant. This adds a small AI model (Gemma 3) that only gets asked when that matching genuinely does
         not understand a phrase. It runs entirely on your phone, nothing is sent anywhere, and everything it
         proposes still goes through the same confirm screen before anything saves.
       </P>
@@ -92,8 +92,8 @@ export default function AiSettings() {
           {ai.status === 'not_downloaded' && (
             <>
               <Row style={{ gap: 8 }}><Ionicons name="cloud-download-outline" size={18} color={C.muted} /><Text style={st.status}>Not downloaded</Text></Row>
-              <P muted style={{ fontSize: 13 }}>A {MODEL_SIZE_GB} GB one-off download, Wi-Fi recommended. It stays on your phone after that, no further downloads.</P>
-              <Button icon="cloud-download-outline" title={`Download the model (${MODEL_SIZE_GB} GB)`} onPress={download} loading={busy} style={{ marginTop: 4 }} />
+              <P muted style={{ fontSize: 13 }}>A {MODEL_SIZE_MB} MB one-off download, Wi-Fi recommended. It stays on your phone after that, no further downloads.</P>
+              <Button icon="cloud-download-outline" title={`Download the model (${MODEL_SIZE_MB} MB)`} onPress={download} loading={busy} style={{ marginTop: 4 }} />
               <ManualImport onOpenLink={() => Linking.openURL(MODEL_URL)} onImport={importLocalFile} busy={busy} />
             </>
           )}
@@ -101,7 +101,7 @@ export default function AiSettings() {
             <>
               <Row style={{ gap: 8 }}><Ionicons name="cloud-download" size={18} color={A.core} /><Text style={st.status}>Downloading…</Text></Row>
               <View style={st.track}><View style={[st.fill, { width: `${Math.round(ai.progress * 100)}%` }]} /></View>
-              <P muted style={{ fontSize: 12 }}>{Math.round(ai.progress * 100)}% of {MODEL_SIZE_GB} GB. You can leave this page, it keeps going.</P>
+              <P muted style={{ fontSize: 12 }}>{Math.round(ai.progress * 100)}% of {MODEL_SIZE_MB} MB. You can leave this page, it keeps going.</P>
               {stuck && (
                 <>
                   <P style={{ fontSize: 13, color: C.danger }}>This has not moved for a while, it may be stuck. Check you are on Wi-Fi, then cancel and try again.</P>
@@ -148,7 +148,7 @@ export default function AiSettings() {
       )}
 
       <P muted style={{ fontSize: 12, marginTop: 14 }}>
-        Google's Gemma 3n, run through Google's on-device MediaPipe LLM Inference API. Like any small model, it can
+        Google's Gemma 3 (1B), run through Google's on-device MediaPipe LLM Inference API. Like any small model, it can
         get things wrong, which is exactly why nothing it proposes skips the confirm screen.
       </P>
     </Screen>

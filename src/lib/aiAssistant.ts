@@ -1,8 +1,16 @@
-// The optional on-device model (Phase 2). Off by default: it is a 3 GB download, so you turn it on yourself
-// from User settings, never automatically. It only ever runs after the free, instant word matching in
-// voiceParse.ts has already given up, and it never saves anything itself, see resolveLlmOutput() below: its
-// answer is re-checked against your real data the exact same way a spoken command is, then shown on the same
-// confirm screen, with the same extra confirmation for anything that deletes.
+// The optional on-device model (Phase 2). Off by default: it is a sizeable download, so you turn it on
+// yourself from User settings, never automatically. It only ever runs after the free, instant word matching
+// in voiceParse.ts has already given up, and it never saves anything itself, see resolveLlmOutput() below:
+// its answer is re-checked against your real data the exact same way a spoken command is, then shown on the
+// same confirm screen, with the same extra confirmation for anything that deletes.
+//
+// Was Gemma 3n (gemma-3n-E2B-it-int4.task) at first, which loaded on EAS but failed on device with "Unsupported
+// model signature" from odml.infra.LiteRTResourceCalculator: Google only ever shipped Gemma 3n for the LLM
+// Inference API in the newer .litertlm container, never the older Task Bundle (.task) format this library
+// (com.google.mediapipe:tasks-genai, now in maintenance mode) understands, so that file was never actually
+// going to load here no matter how the download went. Gemma 3, the smaller 1B model, IS shipped in real
+// .task form for this exact API (Google's litert-community/Gemma3-1B-IT on Hugging Face), so that is what
+// runs now. It is also a fifth of the download size, a welcome side effect.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import { Food, FoodEntry, Meal } from './nutrition';
@@ -13,11 +21,12 @@ import {
   findByTitle, findFood, GOAL_LABEL, GOAL_WORDS, mealForNow, parseNumber, parseTime, parseUnit, resolveAmount, VoiceContext, VoiceIntent,
 } from './voiceParse';
 
-export const MODEL_NAME = 'gemma-3n-E2B-it-int4.task';
-// A public, ungated re-upload of Google's own model, so the app can download it with a plain request, no
-// Hugging Face account or license click-through needed on your end.
-export const MODEL_URL = 'https://huggingface.co/sitatech/waico-models/resolve/main/gemma-3n-E2B-it-int4.task';
-export const MODEL_SIZE_GB = 3.1;
+export const MODEL_NAME = 'gemma3-1b-it-int4.task';
+// A public, ungated re-upload of Google's own model (same Task Bundle file as the official, license gated
+// litert-community/Gemma3-1B-IT repo), so the app can download it with a plain request, no Hugging Face
+// account or license click-through needed on your end.
+export const MODEL_URL = 'https://huggingface.co/aquhm/gemma3-1b-it-int4-litert/resolve/main/gemma3-1b-it-int4.task';
+export const MODEL_SIZE_MB = 560;
 
 /** The one shared shape both the real (Android) runtime and the stub (web, iOS) hand out, so nothing that
  *  uses it has to know or care which one it got. See src/lib/aiRuntime.tsx and its .android.tsx twin. */
