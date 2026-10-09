@@ -55,7 +55,7 @@ const UNIT_WORDS: Record<string, RecipeUnit | 'kg' | 'l'> = {
   tsp: 'tsp', teaspoon: 'tsp', teaspoons: 'tsp', tbsp: 'tbsp', tablespoon: 'tbsp', tablespoons: 'tbsp',
   cup: 'cup', cups: 'cup', piece: 'piece', pieces: 'piece', slice: 'piece', slices: 'piece', serving: 'piece', servings: 'piece',
 };
-function parseUnit(text: string): RecipeUnit | 'kg' | 'l' | null {
+export function parseUnit(text: string): RecipeUnit | 'kg' | 'l' | null {
   for (const [w, u] of Object.entries(UNIT_WORDS)) if (new RegExp(`\\b${w}\\b`).test(text)) return u;
   return null;
 }
@@ -152,7 +152,7 @@ function titleScore(query: string, name: string): number {
 }
 
 /** The best matching item by name among a list (a task, a reminder, a logged food), or null if nothing matches. */
-function findByTitle<T>(query: string, items: T[], titleOf: (x: T) => string): T | null {
+export function findByTitle<T>(query: string, items: T[], titleOf: (x: T) => string): T | null {
   let best: T | null = null;
   let bestScore = -1;
   for (const it of items) {
@@ -184,22 +184,22 @@ function findBestAcross(query: string, groups: MatchGroup[]): VoiceIntent | null
 }
 
 /** A plain decimal, for things people say as digits (a weight, a water amount), e.g. "82.3" or "1500". */
-function parseNumber(text: string): number | null {
+export function parseNumber(text: string): number | null {
   const m = text.match(/\d+(\.\d+)?/);
   return m ? Number(m[0]) : null;
 }
 
-const GOAL_WORDS: [RegExp, Goal][] = [
+export const GOAL_WORDS: [RegExp, Goal][] = [
   [/\brecomp\b|\blose fat and build muscle\b|\btone up\b/, 'recomp'],
   [/\bbuild muscle\b|\bgain muscle\b|\bbulk\b/, 'muscle'],
   [/\blose (fat|weight)\b|\bcut\b|\bfat loss\b/, 'fat_loss'],
   [/\b(get|be|become) stronger\b|\bstrength\b/, 'strength'],
   [/\bgeneral fitness\b|\bstay fit\b/, 'general'],
 ];
-const GOAL_LABEL: Record<Goal, string> = { recomp: 'Lose fat and build muscle', muscle: 'Build muscle', fat_loss: 'Lose fat', strength: 'Get stronger', general: 'General fitness' };
+export const GOAL_LABEL: Record<Goal, string> = { recomp: 'Lose fat and build muscle', muscle: 'Build muscle', fat_loss: 'Lose fat', strength: 'Get stronger', general: 'General fitness' };
 
 /** "9am", "9:30 pm", "noon", "midnight" as 24 hour "HH:MM", or null if nothing like a time was said. */
-function parseTime(text: string): string | null {
+export function parseTime(text: string): string | null {
   if (/\bnoon\b/.test(text)) return '12:00';
   if (/\bmidnight\b/.test(text)) return '00:00';
   const m = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);

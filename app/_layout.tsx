@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { ConfirmHost } from '../src/components/ConfirmHost';
 import { Loading } from '../src/components/ui';
+import { AiRuntimeProvider } from '../src/lib/aiRuntime';
 import { StoreProvider, useStore } from '../src/lib/store';
 import { C, F } from '../src/lib/theme';
 
@@ -57,8 +58,10 @@ export default function RootLayout() {
   if (!loaded) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   return (
     <StoreProvider>
-      <StatusBar style="light" />
-      <Gate />
+      <AiRuntimeProvider>
+        <StatusBar style="light" />
+        <Gate />
+      </AiRuntimeProvider>
     </StoreProvider>
   );
 }

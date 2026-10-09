@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCharacter } from '../../../src/components/CoachCharacter';
 import { Card, Eyebrow, hovered, HoverTip, P, Row, Screen, Section, smooth, usePageWidth } from '../../../src/components/ui';
+import { useAiRuntime } from '../../../src/lib/aiRuntime';
 import { COACHES, CoachStyle, useCoachStyle } from '../../../src/lib/coachStyle';
 import { confirm } from '../../../src/lib/confirm';
 import { computeTargets, JOB_LABELS, JobActivity } from '../../../src/lib/nutrition';
@@ -35,6 +36,7 @@ export default function UserScreen() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [coachStyle, setCoachStyle] = useCoachStyle();
+  const ai = useAiRuntime();
   // Two coach cards side by side: each picture fills its card, and never gets taller than it needs to be.
   const coachW = Math.floor((usePageWidth() - 12) / 2) - 20;
   const coachH = Math.min(210, Math.round(coachW * 1.4));
@@ -284,6 +286,11 @@ export default function UserScreen() {
             icon="key-outline" color={A.water} title="Change password"
             sub="Sign in with a new password"
             onPress={() => router.push('/user/password')}
+          />
+          <Setting
+            icon="sparkles-outline" color={A.core} title="AI assistant"
+            sub={!ai.available ? 'Android only' : ai.status === 'downloaded' ? (ai.enabled ? 'On' : 'Downloaded, turned off') : ai.status === 'downloading' ? `Downloading, ${Math.round(ai.progress * 100)}%` : 'Not downloaded'}
+            onPress={() => router.push('/user/ai')}
           />
         </View>
       </Section>

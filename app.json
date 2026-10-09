@@ -46,7 +46,8 @@
           "color": "#000000"
         }
       ],
-      "expo-speech-recognition"
+      "expo-speech-recognition",
+      "expo-llm-mediapipe"
     ],
     "scheme": "workout",
     "extra": {

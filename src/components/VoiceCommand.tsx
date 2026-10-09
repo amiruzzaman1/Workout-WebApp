@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
-import { AccessibilityInfo, Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { buildPrompt, resolveLlmOutput } from '../lib/aiAssistant';
+import { useAiRuntime } from '../lib/aiRuntime';
 import { confirm as confirmDialog } from '../lib/confirm';
 import { entryToFood, MEAL_LABELS, round, scaleFood } from '../lib/nutrition';
 import { recipeToFood } from '../lib/recipes';
@@ -9,13 +11,13 @@ import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
 import { fmt12, segmentsOf } from '../lib/tracker';
-import { isDestructive, parseVoiceCommand, VoiceIntent } from '../lib/voiceParse';
+import { isDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
 import { useTimeCategories } from './DayTrackers';
-import { Button, hovered, smooth } from './ui';
+import { Button, hovered, Input, Row, smooth } from './ui';
 
-type Phase = 'listening' | 'parsed' | 'saving' | 'done' | 'error';
+type Phase = 'listening' | 'thinking' | 'parsed' | 'saving' | 'done' | 'error';
 
 /**
  * A floating mic button (Android only, the phone's own speech recognizer, nothing sent anywhere). Says what
@@ -30,10 +32,13 @@ export function VoiceCommand() {
     reminders, addReminder, deleteReminder, water, setWater, logWeight, saveProfile,
   } = useStore();
   const { categories } = useTimeCategories();
+  const ai = useAiRuntime();
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('listening');
   const [partial, setPartial] = useState('');
+  const [typed, setTyped] = useState('');
   const [intent, setIntent] = useState<VoiceIntent | null>(null);
+  const [fromAi, setFromAi] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const spoke = useRef(false);
@@ -57,20 +62,38 @@ export function VoiceCommand() {
   const todayFoodEntries = foodEntries.filter((e) => e.eaten_on === todayISO());
   const todayTasks = tasks.filter((t) => t.day === todayISO());
 
-  function finish(said: string) {
+  async function finish(said: string) {
     ExpoSpeechRecognitionModule.stop();
     setTranscript(said);
+    setFromAi(false);
     const knownFoods = [
       ...sharedFoods, ...myFoods, ...recipes.map(recipeToFood),
       ...[...foodEntries].reverse().slice(0, 150).map(entryToFood),
     ];
-    const parsed = parseVoiceCommand(said, { knownFoods, categories, runningLabel, todayTasks, todayFoodEntries, reminders });
+    const ctx: VoiceContext = { knownFoods, categories, runningLabel, todayTasks, todayFoodEntries, reminders };
+    const parsed = parseVoiceCommand(said, ctx);
+    // The instant word matching above handles most phrasings for free; the on-device model, when you have
+    // turned it on in User settings, only ever gets asked when that fast path genuinely found nothing, since
+    // it is slower and the point of the fast path is to make most commands not need it at all.
+    if (parsed.kind === 'unknown' && ai.available && ai.enabled && ai.isLoaded) {
+      setPhase('thinking');
+      try {
+        const raw = await ai.ask(buildPrompt(said, ctx));
+        const resolved = resolveLlmOutput(raw, ctx);
+        setIntent(resolved);
+        setFromAi(resolved.kind !== 'unknown');
+      } catch {
+        setIntent(parsed); // the model itself failed to answer; fall back to the honest "not sure"
+      }
+      setPhase('parsed');
+      return;
+    }
     setIntent(parsed);
     setPhase('parsed');
   }
 
   async function start() {
-    setOpen(true); setPhase('listening'); setPartial(''); setIntent(null); setError(null); spoke.current = false;
+    setOpen(true); setPhase('listening'); setPartial(''); setTyped(''); setIntent(null); setError(null); spoke.current = false;
     await preloadDictionary();
     const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!perm.granted) { setError('Forge needs microphone and speech permission, allow it in your phone settings.'); setPhase('error'); return; }
@@ -78,6 +101,14 @@ export function VoiceCommand() {
       lang: 'en-US', interimResults: true, continuous: false, addsPunctuation: false,
       contextualStrings: knownWords().slice(0, 200),
     });
+  }
+
+  /** Typed instead of spoken: the exact same pipeline as a finished voice command, just skipping the microphone. */
+  function send() {
+    if (!typed.trim()) return;
+    ExpoSpeechRecognitionModule.abort();
+    spoke.current = true;
+    finish(typed.trim());
   }
 
   function knownWords(): string[] {
@@ -176,11 +207,24 @@ export function VoiceCommand() {
                 <PulsingMic />
                 <Text style={s.hint}>Listening{partial ? '' : '…'}</Text>
                 <Text style={s.transcript} numberOfLines={3}>{partial || 'Say something, like "log two eggs for breakfast", "start my gym routine", or "remind me to take my medicine every day".'}</Text>
-                <Button kind="secondary" title="Cancel" onPress={close} style={{ marginTop: 16 }} />
+                <View style={s.orRow}><View style={s.orLine} /><Text style={s.orText}>or type it</Text><View style={s.orLine} /></View>
+                <Input value={typed} onChangeText={setTyped} placeholder="Type a command instead" onSubmitEditing={send} returnKeyType="send" style={{ width: '100%' }} />
+                <Row style={{ gap: 8, marginTop: 10, width: '100%' }}>
+                  <Button small icon="arrow-up" title="Send" onPress={send} disabled={!typed.trim()} style={{ flex: 1 }} />
+                  <Button small kind="secondary" title="Cancel" onPress={close} style={{ flex: 1 }} />
+                </Row>
+              </>
+            )}
+            {phase === 'thinking' && (
+              <>
+                <Text style={s.heard}>"{transcript}"</Text>
+                <View style={s.dotsWrap}><Dots /></View>
+                <Text style={s.hint}>Having a closer look</Text>
+                <View style={s.localBadge}><Ionicons name="phone-portrait-outline" size={12} color={A.core} /><Text style={s.localBadgeText}>Running on your phone, not the internet</Text></View>
               </>
             )}
             {phase === 'parsed' && intent && (
-              <ConfirmCard intent={intent} transcript={transcript} onConfirm={confirm} onRetry={start} onCancel={close} />
+              <ConfirmCard intent={intent} transcript={transcript} fromAi={fromAi} onConfirm={confirm} onRetry={start} onCancel={close} />
             )}
             {phase === 'saving' && <Text style={s.hint}>Saving…</Text>}
             {phase === 'done' && (
@@ -206,9 +250,10 @@ export function VoiceCommand() {
   );
 }
 
-function ConfirmCard({ intent, transcript, onConfirm, onRetry, onCancel }: { intent: VoiceIntent; transcript: string; onConfirm: () => void; onRetry: () => void; onCancel: () => void }) {
+function ConfirmCard({ intent, transcript, fromAi, onConfirm, onRetry, onCancel }: { intent: VoiceIntent; transcript: string; fromAi: boolean; onConfirm: () => void; onRetry: () => void; onCancel: () => void }) {
   return (
     <>
+      {fromAi && <View style={s.aiTag}><Ionicons name="sparkles" size={11} color={A.core} /><Text style={s.aiTagText}>AI guess</Text></View>}
       <Text style={s.heard}>"{transcript}"</Text>
       {intent.kind === 'start_timer' && (
         <>
@@ -299,7 +344,11 @@ function ConfirmCard({ intent, transcript, onConfirm, onRetry, onCancel }: { int
         <>
           <Ionicons name="help-circle-outline" size={28} color={C.muted} />
           <Text style={s.title}>Not sure what you meant</Text>
-          <Text style={s.hint}>Try "log two eggs for breakfast", "start my gym routine", "remind me to call the dentist", "delete the task to buy milk", or "set my goal weight to 70".</Text>
+          <Text style={s.hint}>
+            {fromAi
+              ? "Even the AI wasn't confident about that one."
+              : 'Try "log two eggs for breakfast", "start my gym routine", "remind me to call the dentist", "delete the task to buy milk", or "set my goal weight to 70".'}
+          </Text>
         </>
       )}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -346,6 +395,30 @@ function PulsingMic() {
   );
 }
 
+/** Three dots, one after another, same idea as a chat app's "typing" indicator, while the model thinks. */
+function Dots() {
+  const vals = [useRef(new Animated.Value(0.3)).current, useRef(new Animated.Value(0.3)).current, useRef(new Animated.Value(0.3)).current];
+  useEffect(() => {
+    let loops: Animated.CompositeAnimation[] = [];
+    AccessibilityInfo.isReduceMotionEnabled?.().then((still) => {
+      if (still) return;
+      loops = vals.map((v, i) => Animated.loop(Animated.sequence([
+        Animated.delay(i * 150),
+        Animated.timing(v, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.timing(v, { toValue: 0.3, duration: 350, useNativeDriver: true }),
+        Animated.delay((2 - i) * 150),
+      ])));
+      loops.forEach((l) => l.start());
+    }).catch(() => {});
+    return () => loops.forEach((l) => l.stop());
+  }, []);
+  return (
+    <View style={{ flexDirection: 'row', gap: 5 }}>
+      {vals.map((v, i) => <Animated.View key={i} style={[s.dot, { opacity: v }]} />)}
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   fab: { position: 'absolute', right: 18, bottom: 88, width: 54, height: 54, borderRadius: 27, backgroundColor: C.card, borderWidth: 1, borderColor: C.borderStrong, alignItems: 'center', justifyContent: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
   backdrop: { flex: 1, backgroundColor: '#000000aa', alignItems: 'center', justifyContent: 'center', padding: 24 },
@@ -356,4 +429,13 @@ const s = StyleSheet.create({
   heard: { color: C.faint, fontFamily: F.body, fontSize: 12, textAlign: 'center', fontStyle: 'italic', marginBottom: 6 },
   title: { color: C.text, fontFamily: F.display, fontSize: 18, letterSpacing: -0.4, textAlign: 'center', marginTop: 8 },
   note: { color: A.carbs, fontFamily: F.body, fontSize: 12, textAlign: 'center', marginTop: 6 },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginTop: 14, marginBottom: 2 },
+  orLine: { flex: 1, height: 1, backgroundColor: C.border },
+  orText: { color: C.faint, fontFamily: F.body, fontSize: 11 },
+  dotsWrap: { marginTop: 10, marginBottom: 2 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.muted },
+  localBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card2, borderWidth: 1, borderColor: C.borderStrong, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, marginTop: 10 },
+  localBadgeText: { color: C.soft, fontFamily: F.bodySemi, fontSize: 10.5 },
+  aiTag: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.card2, borderWidth: 1, borderColor: A.core, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  aiTagText: { color: A.core, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase' },
 });
