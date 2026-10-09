@@ -13,7 +13,6 @@ import { groupColor, sessionGroups } from '../../../src/lib/groups';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
 import { computeTargets, totals } from '../../../src/lib/nutrition';
 import { refreshReminders } from '../../../src/lib/reminders';
-import { VoiceCommand } from '../../../src/components/VoiceCommand';
 import { PlanSession, uid, WEEK_ORDER } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
@@ -130,7 +129,6 @@ export default function DashboardScreen() {
     : daySets > 0 ? 'Continue logging' : date > todayISO() ? 'Open workout' : 'Log this workout';
 
   return (
-    <>
     <Screen>
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>
         <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} />
@@ -201,8 +199,6 @@ export default function DashboardScreen() {
         )}
       </Section>
     </Screen>
-    <VoiceCommand />
-    </>
   );
 }
 

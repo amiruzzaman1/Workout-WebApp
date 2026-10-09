@@ -15,6 +15,7 @@ import { fmt12, isTime, minutesBetween, segmentsOf } from '../lib/tracker';
 import { isDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
+import { speak, stopSpeaking, useSpeakEnabled } from '../lib/speech';
 import { useTimeCategories } from './DayTrackers';
 import { Button, hovered, Input, Row, smooth } from './ui';
 
@@ -44,6 +45,7 @@ export function VoiceCommand() {
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const spoke = useRef(false);
+  const [speakOn, setSpeakOn] = useSpeakEnabled();
 
   const running = activities.find((a) => a.day === todayISO() && a.started_at && !a.ended_at) ?? null;
   const runningLabel = running?.title ?? (activeVisit ? 'Gym' : null);
@@ -96,7 +98,16 @@ export function VoiceCommand() {
     setPhase('parsed');
   }
 
+  // Reads back what it understood (or that it did not), the same moments the modal already changes to show
+  // it, so turning this on feels like getting an answer rather than a running narration of everything typed.
+  useEffect(() => {
+    if (phase === 'parsed' && intent) speak(speakable(intent));
+    else if (phase === 'done') speak('Done.');
+    else if (phase === 'error' && error) speak(error);
+  }, [phase]);
+
   async function start() {
+    stopSpeaking();
     setOpen(true); setPhase('listening'); setPartial(''); setTyped(''); setIntent(null); setError(null); spoke.current = false;
     await preloadDictionary();
     const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
@@ -127,6 +138,7 @@ export function VoiceCommand() {
 
   function close() {
     ExpoSpeechRecognitionModule.abort();
+    stopSpeaking();
     setOpen(false);
   }
 
@@ -221,6 +233,7 @@ export function VoiceCommand() {
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <Pressable style={s.backdrop} onPress={phase === 'listening' ? close : undefined}>
           <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
+            <SpeakToggle on={speakOn} onToggle={() => setSpeakOn(!speakOn)} />
             {phase === 'listening' && (
               <>
                 <PulsingMic />
@@ -266,6 +279,43 @@ export function VoiceCommand() {
         </Pressable>
       </Modal>
     </>
+  );
+}
+
+/** What to read out loud for each kind of understood command, a spoken sentence rather than the card's
+ *  own short label, kept in sync with ConfirmCard's own text below. */
+function speakable(intent: VoiceIntent): string {
+  switch (intent.kind) {
+    case 'start_timer': return intent.isGym ? 'Starting a gym session.' : `Starting ${intent.label}.`;
+    case 'stop_timer': return 'Stopping the timer.';
+    case 'add_task': return `Adding task: ${intent.title}.`;
+    case 'delete_task': return `Delete task: ${intent.task.title}.`;
+    case 'delete_food': return `Delete ${intent.entry.name}.`;
+    case 'log_weight': return `Logging weight: ${intent.kg} kilograms.`;
+    case 'log_water': return `${intent.mode === 'set' ? 'Setting' : 'Adding'} water: ${intent.ml} millilitres.`;
+    case 'set_water_goal': return `Setting water goal to ${(intent.ml / 1000).toFixed(1)} litres a day.`;
+    case 'set_goal_weight': return `Setting goal weight to ${intent.kg} kilograms.`;
+    case 'set_fitness_goal': return `Changing goal to ${intent.label}.`;
+    case 'add_reminder': return `Reminder: ${intent.title}, ${REPEAT_LABEL[intent.repeat]}, ${fmt12(intent.time)}.`;
+    case 'delete_reminder': return `Delete reminder: ${intent.reminder.title}.`;
+    case 'log_set': return `${intent.exercise.name}, ${intent.sets} set${intent.sets === 1 ? '' : 's'} of ${intent.reps} reps${intent.weight != null ? ` at ${intent.weight} kilograms` : ', bodyweight'}.`;
+    case 'sleep_start': return `Going to bed at ${fmt12(intent.time)}.`;
+    case 'sleep_end': return `Woke up at ${fmt12(intent.time)}.`;
+    case 'log_food': return `${intent.food.name}, ${round(intent.amount, 1)} ${intent.unit}.`;
+    case 'unknown': return "Sorry, I didn't catch that.";
+  }
+}
+
+function SpeakToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={on ? 'Turn off spoken answers' : 'Turn on spoken answers'}
+      style={(p) => [s.speakToggle, smooth, hovered(p) && { backgroundColor: C.card2, borderColor: A.core }]}
+    >
+      <Ionicons name={on ? 'volume-high' : 'volume-mute'} size={16} color={on ? A.core : C.muted} />
+    </Pressable>
   );
 }
 
@@ -476,4 +526,5 @@ const s = StyleSheet.create({
   localBadgeText: { color: C.soft, fontFamily: F.bodySemi, fontSize: 10.5 },
   aiTag: { position: 'absolute', top: 14, right: 14, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.card2, borderWidth: 1, borderColor: A.core, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   aiTagText: { color: A.core, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase' },
+  speakToggle: { position: 'absolute', top: 10, left: 10, width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
 });

@@ -3,6 +3,7 @@ import { Tabs } from 'expo-router/js-tabs';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { AppHeader } from '../../src/components/AppHeader';
 import { hovered, smooth } from '../../src/components/ui';
+import { VoiceCommand } from '../../src/components/VoiceCommand';
 import { A, C, F, R } from '../../src/lib/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -51,25 +52,30 @@ export default function TabsLayout() {
   // Five tabs share the width, so on a very small phone the labels get a touch smaller instead of being cut off.
   const narrow = useWindowDimensions().width < 360;
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: true,
-        header: () => <AppHeader />,
-        tabBarStyle: { backgroundColor: C.bg, borderTopColor: C.border, borderTopWidth: StyleSheet.hairlineWidth, height: 72, paddingTop: 4, paddingBottom: 4, paddingHorizontal: 4 },
-        tabBarLabelStyle: { fontFamily: F.bodySemi, fontSize: narrow ? 9 : 10, letterSpacing: narrow ? 0 : 0.2, marginTop: 1 },
-        tabBarActiveTintColor: C.text,
-        tabBarInactiveTintColor: C.muted,
-        sceneStyle: { backgroundColor: C.bg },
-      }}
-    >
-      <Tabs.Screen name="(home)" options={tab('Dashboard', 'grid', 'grid-outline', A.up)} />
-      <Tabs.Screen name="food" options={tab('Food', 'nutrition', 'nutrition-outline', A.carbs)} />
-      <Tabs.Screen name="progress" options={tab('Progress', 'stats-chart', 'stats-chart-outline', A.protein)} />
-      <Tabs.Screen name="tracker" options={tab('Tracker', 'timer', 'timer-outline', A.core)} />
-      <Tabs.Screen name="library" options={tab('Exercises', 'barbell', 'barbell-outline', A.fat)} />
-      {/* Your profile opens from the icon in the top left, so it has no tab of its own. */}
-      <Tabs.Screen name="user" options={{ title: 'User', headerShown: false, tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
-    </Tabs>
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: true,
+          header: () => <AppHeader />,
+          tabBarStyle: { backgroundColor: C.bg, borderTopColor: C.border, borderTopWidth: StyleSheet.hairlineWidth, height: 72, paddingTop: 4, paddingBottom: 4, paddingHorizontal: 4 },
+          tabBarLabelStyle: { fontFamily: F.bodySemi, fontSize: narrow ? 9 : 10, letterSpacing: narrow ? 0 : 0.2, marginTop: 1 },
+          tabBarActiveTintColor: C.text,
+          tabBarInactiveTintColor: C.muted,
+          sceneStyle: { backgroundColor: C.bg },
+        }}
+      >
+        <Tabs.Screen name="(home)" options={tab('Dashboard', 'grid', 'grid-outline', A.up)} />
+        <Tabs.Screen name="food" options={tab('Food', 'nutrition', 'nutrition-outline', A.carbs)} />
+        <Tabs.Screen name="progress" options={tab('Progress', 'stats-chart', 'stats-chart-outline', A.protein)} />
+        <Tabs.Screen name="tracker" options={tab('Tracker', 'timer', 'timer-outline', A.core)} />
+        <Tabs.Screen name="library" options={tab('Exercises', 'barbell', 'barbell-outline', A.fat)} />
+        {/* Your profile opens from the icon in the top left, so it has no tab of its own. */}
+        <Tabs.Screen name="user" options={{ title: 'User', headerShown: false, tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
+      </Tabs>
+      {/* A sibling of the tab navigator, not inside any one tab's own screen, so it floats above every page
+          in every tab (including pushed detail pages in a tab's own Stack) instead of just the Dashboard. */}
+      <VoiceCommand />
+    </>
   );
 }
 
