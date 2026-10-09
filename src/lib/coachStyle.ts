@@ -23,6 +23,12 @@ async function load() {
   }
 }
 
+/** The chosen coach, read outside a component (e.g. when working out what a notification should say). */
+export function getCoachStyle(): CoachStyle {
+  load();
+  return current;
+}
+
 export function setCoachStyle(s: CoachStyle) {
   current = s;
   listeners.forEach((fn) => fn(s));

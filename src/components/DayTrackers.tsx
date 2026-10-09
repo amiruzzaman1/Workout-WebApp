@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { confirm } from '../lib/confirm';
+import { startTimerNotification, stopTimerNotification, updateTimerNotification } from '../lib/notify';
 import { fmtDuration, todayISO, visitSeconds } from '../lib/progress';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
@@ -71,7 +72,22 @@ export function useRunningTimer() {
 
   const base = running?.minutes ?? 0;
   const since = running?.started_at ? Math.max(0, Math.floor((now - new Date(running.started_at).getTime()) / 1000)) : 0;
-  return { running, seconds: base * 60 + since, sinceStart: since };
+  const seconds = base * 60 + since;
+
+  // The "timer running" notification: shown the moment a timer starts, kept up to date about once a minute
+  // while it runs (no point refreshing it every second, nobody reads a notification that fast), and cleared
+  // the moment it stops. See src/lib/notify.ts for what this can and cannot do on the web versus the phone.
+  useEffect(() => {
+    if (!running) return;
+    startTimerNotification(running.title);
+    return () => stopTimerNotification();
+  }, [running?.id]);
+  useEffect(() => {
+    if (!running) return;
+    updateTimerNotification(running.title, fmtMinutes(Math.max(1, Math.round(seconds / 60))));
+  }, [running?.id, running?.title, Math.floor(seconds / 60)]);
+
+  return { running, seconds, sinceStart: since };
 }
 
 /** The built in categories, the ones you added, and any used before. */

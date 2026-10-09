@@ -6,6 +6,7 @@ import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
 import { Recipe } from './recipes';
+import { Reminder } from './reminders';
 import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
 import { supabase } from './supabase';
 
@@ -53,6 +54,10 @@ type Store = {
   addTask: (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => Promise<TaskItem>;
   updateTask: (id: string, ch: Partial<TaskItem>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  reminders: Reminder[];
+  addReminder: (row: Omit<Reminder, 'id'>) => Promise<Reminder>;
+  updateReminder: (id: string, ch: Partial<Reminder>) => Promise<void>;
+  deleteReminder: (id: string) => Promise<void>;
   refreshActivities: () => Promise<void>;
   weights: WeightLog[];
   logWeight: (row: WeightLog) => Promise<void>;
@@ -168,6 +173,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [weights, setWeights] = useState<WeightLog[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
@@ -186,6 +192,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setActivities([]);
       setWeights([]);
       setTasks([]);
+      setReminders([]);
       setRecipes([]);
       return;
     }
@@ -210,6 +217,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ]);
     setRecipes(((rc.data ?? []) as any[]).map((r) => ({ ...r, servings: Number(r.servings), cooked_g: r.cooked_g == null ? null : Number(r.cooked_g), items: r.items ?? [] })));
     setTasks((tk.data ?? []) as TaskItem[]);
+    const { data: rmData } = await supabase.from('reminders').select('id,title,remind_time,repeat,remind_date').order('created_at', { ascending: true });
+    setReminders((rmData ?? []) as Reminder[]);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -494,6 +503,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const addReminder = useCallback(async (row: Omit<Reminder, 'id'>) => {
+    const { data, error } = await supabase.from('reminders').insert(row).select('id,title,remind_time,repeat,remind_date').single();
+    if (error) throw new Error(error.message);
+    setReminders((l) => [...l, data as Reminder]);
+    return data as Reminder;
+  }, []);
+
+  const updateReminder = useCallback(async (id: string, ch: Partial<Reminder>) => {
+    setReminders((l) => l.map((r) => (r.id === id ? { ...r, ...ch } : r)));
+    const { error } = await supabase.from('reminders').update(ch).eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const deleteReminder = useCallback(async (id: string) => {
+    setReminders((l) => l.filter((r) => r.id !== id));
+    const { error } = await supabase.from('reminders').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
   const addTask = useCallback(async (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => {
     const { data, error } = await supabase.from('tasks').insert(row).select('id,day,title,category,target_minutes,done,done_at').single();
     if (error) throw new Error(error.message);
@@ -562,7 +590,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
-    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, uploadAvatar, removeAvatar, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

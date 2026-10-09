@@ -3,12 +3,16 @@ import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { dayLabel } from '../../../src/components/AppHeader';
+import { CalendarModal } from '../../../src/components/CalendarModal';
 import { catColor, useTimeCategories } from '../../../src/components/DayTrackers';
+import { TimeField } from '../../../src/components/TimeField';
 import { Button, Chip, Eyebrow, H1, hovered, HoverTip, Input, Label, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { confirm } from '../../../src/lib/confirm';
+import { todayISO } from '../../../src/lib/progress';
+import { nextOccurrence, Reminder, REPEAT_LABEL, Repeat } from '../../../src/lib/reminders';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
-import { fmtMinutes, TaskItem } from '../../../src/lib/tracker';
+import { fmt12, fmtMinutes, TaskItem } from '../../../src/lib/tracker';
 
 const key = (t: string) => t.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -99,9 +103,105 @@ function EditTask({ task, categories, others, onCancel, onSave, onDelete }: { ta
   );
 }
 
+/** "Thu 9 Oct, 9:00 AM", or just the time for a daily one. */
+function fmtWhen(r: Reminder) {
+  const when = nextOccurrence(r);
+  const time = fmt12(r.remind_time);
+  if (!when) return r.repeat === 'once' ? 'Already happened' : time;
+  if (r.repeat === 'daily') return `Every day, ${time}`;
+  const wd = when.toLocaleDateString('en-NZ', { weekday: 'short' });
+  const md = when.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+  return `Next: ${wd} ${md}, ${time}`;
+}
+
+function ReminderRow({ r, onEdit, onDelete }: { r: Reminder; onEdit: () => void; onDelete: () => void }) {
+  const color = A.core;
+  return (
+    <View style={[s.row, { borderTopColor: color }]}>
+      <Ionicons name={r.repeat === 'once' ? 'calendar-outline' : 'repeat'} size={18} color={color} style={{ marginRight: 2 }} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[s.title, { color: C.text }]} numberOfLines={2}>{r.title}</Text>
+        <Text style={s.meta} numberOfLines={1}>{REPEAT_LABEL[r.repeat]} · {fmtWhen(r)}</Text>
+      </View>
+      <Pressable onPress={onEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Edit ${r.title}`} style={(st) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: color + '22' }]}>
+        {(st: any) => <Ionicons name="create-outline" size={17} color={hovered(st) ? color : C.faint} />}
+      </Pressable>
+      <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${r.title}`} style={(st) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: A.over + '22' }]}>
+        {(st: any) => <Ionicons name="trash-outline" size={16} color={hovered(st) ? A.over : C.faint} />}
+      </Pressable>
+    </View>
+  );
+}
+
+const REPEATS: [Repeat, string][] = [['once', 'Once'], ['daily', 'Every day'], ['weekly', 'Every week'], ['monthly', 'Every month'], ['yearly', 'Every year']];
+/** What the date picked under a repeating reminder actually controls, since it is not simply "the day it happens". */
+const DATE_HINT: Record<Repeat, string> = {
+  once: 'The day it happens.',
+  daily: '',
+  weekly: 'Pick any day; it repeats on that weekday every week.',
+  monthly: 'Pick any day; it repeats on that day of the month every month.',
+  yearly: 'Pick any day; it repeats on that month and day every year, like a birthday.',
+};
+
+/** Add or edit a regular reminder: a name, a time, and how often (a specific date underneath for anything but daily). */
+function ReminderForm({ initial, onCancel, onSave, onDelete }: { initial?: Reminder; onCancel: () => void; onSave: (row: Omit<Reminder, 'id'>) => Promise<void>; onDelete?: () => void }) {
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [time, setTime] = useState(initial?.remind_time ?? '09:00');
+  const [repeat, setRepeat] = useState<Repeat>(initial?.repeat ?? 'once');
+  const [date, setDate] = useState(initial?.remind_date ?? todayISO());
+  const [calendar, setCalendar] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const name = title.trim();
+    if (!name) return setError('Type what to remind you about.');
+    if (!time) return setError('Pick a time.');
+    if (repeat !== 'daily' && !date) return setError('Pick a date.');
+    setBusy(true);
+    try {
+      await onSave({ title: name.slice(0, 100), remind_time: time, repeat, remind_date: repeat === 'daily' ? null : date });
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not save. Check your connection and try again.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={[s.row, s.editBox, { borderTopColor: A.core }]}>
+      <Label>What is it</Label>
+      <Input value={title} onChangeText={setTitle} placeholder="e.g. Take medicine, Cancel the trial, Sam's birthday" accessibilityLabel="Reminder name" />
+      <Label>Time</Label>
+      <TimeField value={time} onChange={setTime} />
+      <Label>How often</Label>
+      <Row wrap style={{ gap: 6 }}>
+        {REPEATS.map(([k, label]) => <Chip key={k} label={label} active={repeat === k} onPress={() => setRepeat(k)} />)}
+      </Row>
+      {repeat !== 'daily' && (
+        <>
+          <Label>Date</Label>
+          <Pressable onPress={() => setCalendar(true)} accessibilityRole="button" style={(p) => [s.dateBtn, smooth, hovered(p) && { borderColor: C.text }]}>
+            <Ionicons name="calendar-outline" size={16} color={C.muted} />
+            <Text style={s.dateBtnText}>{new Date(`${date}T12:00:00`).toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: repeat === 'once' ? 'numeric' : undefined })}</Text>
+          </Pressable>
+          {!!DATE_HINT[repeat] && <P muted style={{ fontSize: 12 }}>{DATE_HINT[repeat]}</P>}
+          <CalendarModal visible={calendar} value={date} onPick={(d) => { setDate(d); setCalendar(false); }} onClose={() => setCalendar(false)} />
+        </>
+      )}
+      {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13, marginTop: 6 }}>{error}</Text>}
+      <Row style={{ gap: 8, marginTop: 12 }}>
+        <Button small icon="checkmark" title="Save" onPress={save} loading={busy} />
+        <Button small kind="secondary" title="Cancel" onPress={onCancel} />
+        {onDelete && <View style={{ flex: 1 }} />}
+        {onDelete && <Button small kind="secondary" icon="trash-outline" tint={A.over} title="Delete" onPress={onDelete} />}
+      </Row>
+    </View>
+  );
+}
+
 /** Plan tasks for the day picked at the top. They show up as suggestions in the time tracker while you type. */
 export default function Tasks() {
-  const { date, tasks, activities, addTask, updateTask, deleteTask } = useStore();
+  const { date, tasks, activities, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder } = useStore();
   const { categories } = useTimeCategories();
   const [title, setTitle] = useState('');
   const [cat, setCat] = useState<string | null>(null);
@@ -109,6 +209,8 @@ export default function Tasks() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [remindEditing, setRemindEditing] = useState<string | null>(null);
+  const [addingReminder, setAddingReminder] = useState(false);
 
   const day = tasks.filter((t) => t.day === date);
   const done = day.filter((t) => t.done).length;
@@ -176,6 +278,36 @@ export default function Tasks() {
           {day.length === 0 && <P muted style={{ fontSize: 13 }}>Nothing planned for this day yet.</P>}
         </View>
       </Section>
+
+      <Section title="Regular reminders" icon="alarm-outline" color={A.core} right={<Text style={s.meta}>{reminders.length || ''}</Text>}>
+        <P muted style={{ fontSize: 13 }}>A medicine to take daily, a subscription to cancel on a future date, a birthday every year. These are not tied to the day above.</P>
+        <View>
+          {reminders.map((r) => (
+            remindEditing === r.id ? (
+              <ReminderForm
+                key={r.id} initial={r} onCancel={() => setRemindEditing(null)}
+                onDelete={async () => {
+                  if (await confirm('Delete this reminder?', `${r.title} will stop reminding you.`, { confirmText: 'Delete', danger: true })) { await deleteReminder(r.id); setRemindEditing(null); }
+                }}
+                onSave={async (row) => { await updateReminder(r.id, row); setRemindEditing(null); }}
+              />
+            ) : (
+              <ReminderRow key={r.id} r={r} onEdit={() => setRemindEditing(r.id)} onDelete={async () => {
+                if (await confirm('Delete this reminder?', `${r.title} will stop reminding you.`, { confirmText: 'Delete', danger: true })) await deleteReminder(r.id);
+              }} />
+            )
+          ))}
+          {reminders.length === 0 && !addingReminder && <P muted style={{ fontSize: 13 }}>Nothing set up yet.</P>}
+        </View>
+        {addingReminder ? (
+          <ReminderForm
+            onCancel={() => setAddingReminder(false)}
+            onSave={async (row) => { await addReminder(row); setAddingReminder(false); }}
+          />
+        ) : (
+          <Button kind="secondary" icon="add-circle-outline" tint={A.core} title="New reminder" onPress={() => setAddingReminder(true)} style={{ alignSelf: 'flex-start' }} />
+        )}
+      </Section>
     </Screen>
   );
 }
@@ -187,6 +319,8 @@ const s = StyleSheet.create({
   fill: { height: 4, borderRadius: 2, backgroundColor: A.up },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.border, borderTopWidth: 2 },
   editBox: { flexDirection: 'column', alignItems: 'stretch', gap: 2, paddingBottom: 14 },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.sm, paddingHorizontal: 12, paddingVertical: 12, marginTop: 2 },
+  dateBtnText: { color: C.text, fontFamily: F.bodyMed, fontSize: 14 },
   hit: { padding: 4, borderRadius: 999 },
   box: { width: 24, height: 24, borderRadius: 7, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   title: { fontFamily: F.bodySemi, fontSize: 15 },

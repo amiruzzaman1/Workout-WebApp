@@ -7,9 +7,12 @@ import { GroupIcon } from '../../../src/components/GroupIcon';
 import { Button, Eyebrow, H1, IconBadge, P, Row, Screen, Section } from '../../../src/components/ui';
 import { CoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
 import { useCoachStyle } from '../../../src/lib/coachStyle';
+import { refreshTodayNotifications } from '../../../src/lib/dailyNotifications';
 import { getExercise } from '../../../src/lib/exercises';
 import { groupColor, sessionGroups } from '../../../src/lib/groups';
+import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
 import { computeTargets, totals } from '../../../src/lib/nutrition';
+import { refreshReminders } from '../../../src/lib/reminders';
 import { PlanSession, uid, WEEK_ORDER } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
@@ -22,7 +25,7 @@ function isoOf(d: Date) {
 }
 
 export default function DashboardScreen() {
-  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, water, sleep, weights } = useStore();
+  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, water, sleep, weights } = useStore();
   const router = useRouter();
   const [coachStyle] = useCoachStyle();
   const [quote, setQuote] = useState(() => randomQuote());
@@ -32,6 +35,21 @@ export default function DashboardScreen() {
     const id = setInterval(() => { setQuote((q) => randomQuote(q)); setSeed(Math.random()); }, QUOTE_EVERY_MS);
     return () => clearInterval(id);
   }, []);
+
+  // Daily check ins and the "did you log today" nudges. No server behind these, so this just works out the
+  // next one each time the Dashboard is open and (re)schedules it; see src/lib/notify.ts for what that means
+  // on the web versus on the phone.
+  const todayLogged = useMemo(() => foodEntries.some((e) => e.eaten_on === todayISO()), [foodEntries]);
+  const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayISO()), [tasks]);
+  const todayUndone = todayTasks.filter((t) => !t.done).length;
+  useEffect(() => {
+    initNotifications();
+    requestNotifyPermission().then((ok) => {
+      if (!ok) return;
+      refreshTodayNotifications(todayLogged, todayTasks);
+      refreshReminders(reminders);
+    });
+  }, [todayLogged, todayUndone, reminders]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

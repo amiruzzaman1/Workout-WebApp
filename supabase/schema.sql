@@ -362,3 +362,21 @@ create policy "avatar update own" on storage.objects for update to authenticated
 drop policy if exists "avatar delete own" on storage.objects;
 create policy "avatar delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- v15: reminders that are not about one specific day: a daily medicine, a one off future date (cancel a
+-- subscription), or a yearly one (a birthday). Scheduled client side with src/lib/notify.ts.
+create table if not exists public.reminders (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title text not null,
+  remind_time text not null default '09:00',
+  repeat text not null default 'once' check (repeat in ('once', 'daily', 'weekly', 'monthly', 'yearly')),
+  remind_date date,
+  created_at timestamptz not null default now()
+);
+create index if not exists reminders_user_idx on public.reminders (user_id);
+alter table public.reminders enable row level security;
+drop policy if exists "own reminders" on public.reminders;
+create policy "own reminders" on public.reminders for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.reminders to authenticated;
