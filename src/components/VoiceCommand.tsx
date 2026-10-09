@@ -2,12 +2,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useRef, useState } from 'react';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { AccessibilityInfo, Animated, Easing, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { confirm as confirmDialog } from '../lib/confirm';
 import { entryToFood, MEAL_LABELS, round, scaleFood } from '../lib/nutrition';
 import { recipeToFood } from '../lib/recipes';
+import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
-import { segmentsOf } from '../lib/tracker';
-import { parseVoiceCommand, VoiceIntent } from '../lib/voiceParse';
+import { fmt12, segmentsOf } from '../lib/tracker';
+import { isDestructive, parseVoiceCommand, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
 import { useTimeCategories } from './DayTrackers';
@@ -24,7 +26,8 @@ type Phase = 'listening' | 'parsed' | 'saving' | 'done' | 'error';
 export function VoiceCommand() {
   const {
     activities, addActivity, updateActivity, activeVisit, startVisit, endVisit,
-    tasks, addTask, myFoods, sharedFoods, foodEntries, recipes, addFoodEntry,
+    tasks, addTask, deleteTask, myFoods, sharedFoods, foodEntries, recipes, addFoodEntry, deleteFoodEntry,
+    reminders, addReminder, deleteReminder, water, setWater, logWeight, saveProfile,
   } = useStore();
   const { categories } = useTimeCategories();
   const [open, setOpen] = useState(false);
@@ -51,6 +54,9 @@ export function VoiceCommand() {
     if (!spoke.current && open) { setError("Didn't catch anything, try again."); setPhase('error'); }
   });
 
+  const todayFoodEntries = foodEntries.filter((e) => e.eaten_on === todayISO());
+  const todayTasks = tasks.filter((t) => t.day === todayISO());
+
   function finish(said: string) {
     ExpoSpeechRecognitionModule.stop();
     setTranscript(said);
@@ -58,7 +64,7 @@ export function VoiceCommand() {
       ...sharedFoods, ...myFoods, ...recipes.map(recipeToFood),
       ...[...foodEntries].reverse().slice(0, 150).map(entryToFood),
     ];
-    const parsed = parseVoiceCommand(said, { knownFoods, categories, runningLabel });
+    const parsed = parseVoiceCommand(said, { knownFoods, categories, runningLabel, todayTasks, todayFoodEntries, reminders });
     setIntent(parsed);
     setPhase('parsed');
   }
@@ -77,7 +83,8 @@ export function VoiceCommand() {
   function knownWords(): string[] {
     const w = new Set<string>();
     for (const f of [...sharedFoods, ...myFoods, ...recipes.map(recipeToFood)]) w.add(f.name);
-    for (const t of tasks) w.add(t.title);
+    for (const t of todayTasks) w.add(t.title);
+    for (const r of reminders) w.add(r.title);
     for (const c of categories) w.add(c);
     return [...w];
   }
@@ -89,6 +96,12 @@ export function VoiceCommand() {
 
   async function confirm() {
     if (!intent) return;
+    // Removing something gets asked twice: once by the confirm card everything already goes through, and
+    // again here, the same native-feeling prompt every delete button elsewhere in Forge already uses.
+    if (isDestructive(intent.kind)) {
+      const label = intent.kind === 'delete_task' ? intent.task.title : intent.kind === 'delete_reminder' ? intent.reminder.title : intent.kind === 'delete_food' ? intent.entry.name : '';
+      if (!(await confirmDialog('Delete this?', `"${label}" will be removed.`, { confirmText: 'Delete', danger: true }))) return;
+    }
     setPhase('saving');
     try {
       await act(intent);
@@ -121,6 +134,8 @@ export function VoiceCommand() {
       }
     } else if (it.kind === 'add_task') {
       await addTask({ day: todayISO(), title: it.title, category: it.category, target_minutes: null });
+    } else if (it.kind === 'delete_task') {
+      await deleteTask(it.task.id);
     } else if (it.kind === 'log_food') {
       const m = scaleFood(it.food, it.amount);
       await addFoodEntry({
@@ -128,6 +143,23 @@ export function VoiceCommand() {
         amount: it.amount, unit: it.unit, serving_label: it.food.serving_label ?? null, source: it.food.source ?? null, ...m,
       } as any);
       await remember(transcript.replace(/\bfor\s+(breakfast|lunch|dinner|tea|snack)\b/i, '').trim(), { kind: 'food', source: it.food.source ?? 'unknown', id: it.food.id ?? it.food.name, name: it.food.name });
+    } else if (it.kind === 'delete_food') {
+      await deleteFoodEntry(it.entry.id);
+    } else if (it.kind === 'log_weight') {
+      await logWeight({ day: todayISO(), kg: it.kg, waist_cm: null });
+    } else if (it.kind === 'log_water') {
+      const cur = water[todayISO()] ?? 0;
+      await setWater(todayISO(), it.mode === 'set' ? it.ml : cur + it.ml);
+    } else if (it.kind === 'set_water_goal') {
+      await saveProfile({ water_goal_ml: it.ml } as any);
+    } else if (it.kind === 'set_goal_weight') {
+      await saveProfile({ target_weight_kg: it.kg } as any);
+    } else if (it.kind === 'set_fitness_goal') {
+      await saveProfile({ goal: it.goal } as any);
+    } else if (it.kind === 'add_reminder') {
+      await addReminder({ title: it.title, remind_time: it.time, repeat: it.repeat, remind_date: it.date });
+    } else if (it.kind === 'delete_reminder') {
+      await deleteReminder(it.reminder.id);
     }
   }
 
@@ -143,7 +175,7 @@ export function VoiceCommand() {
               <>
                 <PulsingMic />
                 <Text style={s.hint}>Listening{partial ? '' : '…'}</Text>
-                <Text style={s.transcript} numberOfLines={3}>{partial || 'Say something, like "start my gym routine" or "log two eggs for breakfast".'}</Text>
+                <Text style={s.transcript} numberOfLines={3}>{partial || 'Say something, like "log two eggs for breakfast", "start my gym routine", or "remind me to take my medicine every day".'}</Text>
                 <Button kind="secondary" title="Cancel" onPress={close} style={{ marginTop: 16 }} />
               </>
             )}
@@ -198,6 +230,63 @@ function ConfirmCard({ intent, transcript, onConfirm, onRetry, onCancel }: { int
           {!!intent.category && <Text style={s.hint}>{intent.category}</Text>}
         </>
       )}
+      {intent.kind === 'delete_task' && (
+        <>
+          <Ionicons name="trash-outline" size={28} color={A.over} />
+          <Text style={s.title}>Delete task: {intent.task.title}</Text>
+        </>
+      )}
+      {intent.kind === 'delete_food' && (
+        <>
+          <Ionicons name="trash-outline" size={28} color={A.over} />
+          <Text style={s.title}>Delete: {intent.entry.name}</Text>
+          <Text style={s.hint}>{MEAL_LABELS[intent.entry.meal]} · {intent.entry.kcal} kcal</Text>
+        </>
+      )}
+      {intent.kind === 'log_weight' && (
+        <>
+          <Ionicons name="scale-outline" size={28} color={A.protein} />
+          <Text style={s.title}>Log weight: {intent.kg} kg</Text>
+        </>
+      )}
+      {intent.kind === 'log_water' && (
+        <>
+          <Ionicons name="water" size={28} color={A.water} />
+          <Text style={s.title}>{intent.mode === 'set' ? 'Set' : 'Add'} water: {intent.ml} ml</Text>
+        </>
+      )}
+      {intent.kind === 'set_water_goal' && (
+        <>
+          <Ionicons name="water" size={28} color={A.water} />
+          <Text style={s.title}>Set water goal: {(intent.ml / 1000).toFixed(1)} L a day</Text>
+        </>
+      )}
+      {intent.kind === 'set_goal_weight' && (
+        <>
+          <Ionicons name="flag-outline" size={28} color={A.protein} />
+          <Text style={s.title}>Set goal weight: {intent.kg} kg</Text>
+        </>
+      )}
+      {intent.kind === 'set_fitness_goal' && (
+        <>
+          <Ionicons name="flag-outline" size={28} color={A.protein} />
+          <Text style={s.title}>Change goal: {intent.label}</Text>
+        </>
+      )}
+      {intent.kind === 'add_reminder' && (
+        <>
+          <Ionicons name="alarm-outline" size={28} color={A.core} />
+          <Text style={s.title}>Remind me: {intent.title}</Text>
+          <Text style={s.hint}>{REPEAT_LABEL[intent.repeat]}, {fmt12(intent.time)}</Text>
+          {intent.guessedTime && <Text style={s.note}>No time heard, guessed 9:00 AM, edit it on the Tasks page if that is wrong.</Text>}
+        </>
+      )}
+      {intent.kind === 'delete_reminder' && (
+        <>
+          <Ionicons name="trash-outline" size={28} color={A.over} />
+          <Text style={s.title}>Delete reminder: {intent.reminder.title}</Text>
+        </>
+      )}
       {intent.kind === 'log_food' && (
         <>
           <Ionicons name="nutrition" size={28} color={A.carbs} />
@@ -210,11 +299,15 @@ function ConfirmCard({ intent, transcript, onConfirm, onRetry, onCancel }: { int
         <>
           <Ionicons name="help-circle-outline" size={28} color={C.muted} />
           <Text style={s.title}>Not sure what you meant</Text>
-          <Text style={s.hint}>Try "start my gym routine", "log two eggs for breakfast", or "remind me to call the dentist".</Text>
+          <Text style={s.hint}>Try "log two eggs for breakfast", "start my gym routine", "remind me to call the dentist", "delete the task to buy milk", or "set my goal weight to 70".</Text>
         </>
       )}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 18, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {intent.kind !== 'unknown' && <Button icon="checkmark" title="Confirm" onPress={onConfirm} />}
+        {intent.kind !== 'unknown' && (
+          isDestructive(intent.kind)
+            ? <Button kind="secondary" icon="trash-outline" tint={A.over} title="Delete" onPress={onConfirm} />
+            : <Button icon="checkmark" title="Confirm" onPress={onConfirm} />
+        )}
         <Button kind="secondary" icon="mic" title="Try again" onPress={onRetry} />
         <Button kind="secondary" title="Cancel" onPress={onCancel} />
       </View>

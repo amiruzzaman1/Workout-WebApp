@@ -1,20 +1,41 @@
-// Turns a spoken sentence into one of a few things Forge can actually do. No model, just word matching, the
-// same technique real diet trackers use for this: fast, predictable, and it never makes something up. Anything
-// it is not confident about comes back as 'unknown' rather than a wrong guess, and the caller always shows a
-// confirm screen before anything is saved.
+// Turns a spoken (or typed) sentence into one of the things Forge can actually do. No model, just word matching,
+// the same technique real diet trackers use for this: fast, free, predictable, and it never makes something up.
+// "Everything the app can do" does not mean literally anything you could say, it means every action in this file,
+// each one a real, named thing the app already knows how to do (add, change or remove something); anything that
+// does not match one of them comes back as 'unknown' rather than a wrong guess, and the caller always shows a
+// confirm screen before anything is saved or removed, with a stronger, separate confirmation for deletes.
 import { libToFood, searchLibrary } from './foodData';
-import { Food, Meal } from './nutrition';
+import { Food, FoodEntry, Meal } from './nutrition';
+import { Goal } from './planner';
 import { gramsOf, RecipeUnit } from './recipes';
+import { Reminder, Repeat } from './reminders';
+import { TaskItem } from './tracker';
 import { recallSync } from './voiceDictionary';
 
 export type VoiceIntent =
   | { kind: 'start_timer'; label: string; isGym: boolean; category: string | null }
   | { kind: 'stop_timer' }
   | { kind: 'add_task'; title: string; category: string | null }
+  | { kind: 'delete_task'; task: TaskItem }
   | { kind: 'log_food'; food: Food; amount: number; unit: string; meal: Meal; note?: string }
+  | { kind: 'delete_food'; entry: FoodEntry }
+  | { kind: 'log_weight'; kg: number }
+  | { kind: 'log_water'; ml: number; mode: 'add' | 'set' }
+  | { kind: 'set_goal_weight'; kg: number }
+  | { kind: 'set_water_goal'; ml: number }
+  | { kind: 'set_fitness_goal'; goal: Goal; label: string }
+  | { kind: 'add_reminder'; title: string; time: string; repeat: Repeat; date: string | null; guessedTime: boolean }
+  | { kind: 'delete_reminder'; reminder: Reminder }
   | { kind: 'unknown'; transcript: string };
 
-export const norm = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** Which of these actions remove something, so the caller can ask twice before doing it. */
+export function isDestructive(kind: VoiceIntent['kind']): boolean {
+  return kind === 'delete_task' || kind === 'delete_food' || kind === 'delete_reminder';
+}
+
+// A decimal point stays in, so a spoken weight like "82.3" survives normalizing; addsPunctuation is off when
+// listening, so a stray full stop here is always part of a number, never sentence punctuation.
+export const norm = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9'. ]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 const NUMBER_WORDS: Record<string, number> = {
   a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
@@ -121,7 +142,85 @@ function findCategory(text: string, categories: string[]): string | null {
   return categories.find((c) => t.includes(norm(c))) ?? null;
 }
 
-export type VoiceContext = { knownFoods: Food[]; categories: string[]; runningLabel: string | null };
+/** How well a name matches a spoken query: every shared word counts far more than a shorter name, -1 for no match at all. */
+function titleScore(query: string, name: string): number {
+  const words = norm(query).split(' ').filter((w) => w.length > 2);
+  if (!words.length) return -1;
+  const n = norm(name);
+  const hits = words.filter((w) => wordVariants(w).some((v) => n.includes(v))).length;
+  return hits === 0 ? -1 : hits * 100 - n.length;
+}
+
+/** The best matching item by name among a list (a task, a reminder, a logged food), or null if nothing matches. */
+function findByTitle<T>(query: string, items: T[], titleOf: (x: T) => string): T | null {
+  let best: T | null = null;
+  let bestScore = -1;
+  for (const it of items) {
+    const score = titleScore(query, titleOf(it));
+    if (score > bestScore) { bestScore = score; best = it; }
+  }
+  return best;
+}
+
+type MatchGroup = { items: unknown[]; titleOf: (x: any) => string; make: (x: any) => VoiceIntent };
+/** One list to search, paired with how to read its name and what to return if it is the best match. Each list
+ *  keeps its own item type; only the group itself is untyped, so findBestAcross can mix lists of different kinds. */
+function matchGroup<T>(items: T[], titleOf: (x: T) => string, make: (x: T) => VoiceIntent): MatchGroup {
+  return { items, titleOf, make };
+}
+
+/** The best match across several kinds of list at once (used when a spoken "delete X" does not say what kind of
+ *  thing X is), so a real match in one list never loses to a weaker, coincidental match in another. */
+function findBestAcross(query: string, groups: MatchGroup[]): VoiceIntent | null {
+  let best: VoiceIntent | null = null;
+  let bestScore = -1;
+  for (const g of groups) {
+    for (const it of g.items) {
+      const score = titleScore(query, g.titleOf(it));
+      if (score > bestScore) { bestScore = score; best = g.make(it); }
+    }
+  }
+  return best;
+}
+
+/** A plain decimal, for things people say as digits (a weight, a water amount), e.g. "82.3" or "1500". */
+function parseNumber(text: string): number | null {
+  const m = text.match(/\d+(\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+
+const GOAL_WORDS: [RegExp, Goal][] = [
+  [/\brecomp\b|\blose fat and build muscle\b|\btone up\b/, 'recomp'],
+  [/\bbuild muscle\b|\bgain muscle\b|\bbulk\b/, 'muscle'],
+  [/\blose (fat|weight)\b|\bcut\b|\bfat loss\b/, 'fat_loss'],
+  [/\b(get|be|become) stronger\b|\bstrength\b/, 'strength'],
+  [/\bgeneral fitness\b|\bstay fit\b/, 'general'],
+];
+const GOAL_LABEL: Record<Goal, string> = { recomp: 'Lose fat and build muscle', muscle: 'Build muscle', fat_loss: 'Lose fat', strength: 'Get stronger', general: 'General fitness' };
+
+/** "9am", "9:30 pm", "noon", "midnight" as 24 hour "HH:MM", or null if nothing like a time was said. */
+function parseTime(text: string): string | null {
+  if (/\bnoon\b/.test(text)) return '12:00';
+  if (/\bmidnight\b/.test(text)) return '00:00';
+  const m = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  const min = m[2] ? Number(m[2]) : 0;
+  if (h > 23 || min > 59) return null;
+  if (m[3] === 'pm' && h < 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  if (!m[3] && h === 0) return null; // a bare "0" from something else, not really a time
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+const REPEAT_WORDS: [RegExp, Repeat][] = [
+  [/\bevery day\b|\bdaily\b/, 'daily'], [/\bevery week\b|\bweekly\b/, 'weekly'],
+  [/\bevery month\b|\bmonthly\b/, 'monthly'], [/\bevery year\b|\byearly\b|\bannually\b/, 'yearly'],
+];
+
+export type VoiceContext = {
+  knownFoods: Food[]; categories: string[]; runningLabel: string | null;
+  todayTasks: TaskItem[]; todayFoodEntries: FoodEntry[]; reminders: Reminder[];
+};
 
 export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceIntent {
   const t = norm(transcript);
@@ -137,6 +236,72 @@ export function parseVoiceCommand(transcript: string, ctx: VoiceContext): VoiceI
     const isGym = /\bgym\b|\bworkout\b|\blifting\b|\blift\b/.test(rest) || /\bgym\b|\bworkout\b/.test(t);
     const label = cleanLabel(rest) || 'Gym';
     return { kind: 'start_timer', label, isGym, category: findCategory(rest, ctx.categories) };
+  }
+
+  // Deletes come before anything else can claim the same words ("delete the task to call the dentist" must not
+  // fall through to add_task just because "call the dentist" is also in there).
+  const deleteMatch = t.match(/\b(?:delete|remove|cancel)\b\s*(?:the\s+)?(.*)/);
+  if (deleteMatch && deleteMatch[1].trim()) {
+    const rest = deleteMatch[1].replace(/\btask\b|\breminder\b|\bentry\b/g, '').trim();
+    if (/\btask\b/.test(deleteMatch[0])) {
+      const task = findByTitle(rest, ctx.todayTasks, (x) => x.title);
+      if (task) return { kind: 'delete_task', task };
+    } else if (/\breminder\b/.test(deleteMatch[0])) {
+      const reminder = findByTitle(rest, ctx.reminders, (x) => x.title);
+      if (reminder) return { kind: 'delete_reminder', reminder };
+    } else {
+      const found = findBestAcross(rest, [
+        matchGroup(ctx.todayTasks, (x) => x.title, (x): VoiceIntent => ({ kind: 'delete_task', task: x })),
+        matchGroup(ctx.reminders, (x) => x.title, (x): VoiceIntent => ({ kind: 'delete_reminder', reminder: x })),
+        matchGroup(ctx.todayFoodEntries, (x) => x.name, (x): VoiceIntent => ({ kind: 'delete_food', entry: x })),
+      ]);
+      if (found) return found;
+    }
+    return { kind: 'unknown', transcript };
+  }
+
+  // A reminder that repeats is a different thing from a one off task for today, even though both start with
+  // similar words ("remind me to..."), so this is checked before add_task, only taking over when a repeat
+  // word is actually heard.
+  const repeatHeard = REPEAT_WORDS.find(([re]) => re.test(t));
+  const reminderMatch = t.match(/\bremind me (?:every\s+\w+\s+)?(?:at\s+[\w:]+\s+)?to\b\s*(.*)/);
+  if (repeatHeard && reminderMatch && reminderMatch[1].trim()) {
+    const title = cleanLabel(reminderMatch[1].replace(/\b(am|pm)\b/g, '').trim());
+    const time = parseTime(t);
+    return { kind: 'add_reminder', title, time: time ?? '09:00', repeat: repeatHeard[1], date: null, guessedTime: !time };
+  }
+
+  const weightMatch = t.match(/\b(?:log|record|update)\s+(?:my\s+)?weight\b|\bi\s+weigh\b|\bmy\s+weight\s+is\b/);
+  if (weightMatch) {
+    const kg = parseNumber(t);
+    if (kg != null && kg > 0 && kg < 400) return { kind: 'log_weight', kg };
+  }
+
+  const waterSetMatch = t.match(/\b(?:set|change)\s+(?:my\s+)?(?:daily\s+)?water\s*(?:goal|target)\b/);
+  if (waterSetMatch) {
+    const n = parseNumber(t);
+    if (n != null) { const unit = parseUnit(t); return { kind: 'set_water_goal', ml: unit === 'l' ? n * 1000 : n }; }
+  }
+  const waterLogMatch = t.match(/\b(?:drank|had|log|add|set)\b.*\bwater\b/);
+  if (waterLogMatch) {
+    const n = parseNumber(t);
+    if (n != null) {
+      const unit = parseUnit(t);
+      const ml = unit === 'l' ? n * 1000 : n;
+      return { kind: 'log_water', ml, mode: /\bset\b/.test(t) ? 'set' : 'add' };
+    }
+  }
+
+  const goalWeightMatch = t.match(/\b(?:set|change)\s+(?:my\s+)?goal\s+weight\b/);
+  if (goalWeightMatch) {
+    const kg = parseNumber(t);
+    if (kg != null && kg > 0 && kg < 400) return { kind: 'set_goal_weight', kg };
+  }
+
+  const fitnessGoalMatch = t.match(/\b(?:set|change)\s+(?:my\s+)?goal\s+to\b\s*(.*)/);
+  if (fitnessGoalMatch) {
+    const g = GOAL_WORDS.find(([re]) => re.test(fitnessGoalMatch[1]));
+    if (g) return { kind: 'set_fitness_goal', goal: g[1], label: GOAL_LABEL[g[1]] };
   }
 
   const taskMatch = t.match(/\b(?:remind me to|add (?:a )?task(?: to)?|i need to|new task)\b\s*(.*)/);

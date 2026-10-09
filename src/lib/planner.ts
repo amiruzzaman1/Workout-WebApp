@@ -6,12 +6,14 @@
 //  - Beginners get fewer exercises and at most 3 sets.
 import { getExercise, isAvailable } from './exercises';
 
+export type Goal = 'muscle' | 'fat_loss' | 'strength' | 'general' | 'recomp';
+
 export type Profile = {
   id: string;
   display_name: string | null;
   avatar_url?: string | null;
   experience: 'beginner' | 'intermediate';
-  goal: 'muscle' | 'fat_loss' | 'strength' | 'general' | 'recomp';
+  goal: Goal;
   training_days: number[];
   sessions_per_day: number;
   double_days: number[];
