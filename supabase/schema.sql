@@ -380,3 +380,28 @@ drop policy if exists "own reminders" on public.reminders;
 create policy "own reminders" on public.reminders for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.reminders to authenticated;
+
+-- v16: alarms, like your phone's alarm clock. Once, every day, or certain days of the week, with sound and
+-- vibration you can turn on or off and a repeat count for both, so it keeps ringing/buzzing a few times
+-- instead of once. Scheduled client side with src/lib/alarms.ts and src/lib/notify.ts.
+create table if not exists public.alarms (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  label text not null default '',
+  alarm_time text not null default '07:00',
+  repeat text not null default 'once' check (repeat in ('once', 'daily', 'weekly')),
+  days int[] not null default '{}', -- 0 (Sunday) to 6 (Saturday), only used when repeat = 'weekly'
+  alarm_date date, -- only used when repeat = 'once'
+  sound boolean not null default true,
+  vibrate boolean not null default true,
+  vibration_pattern text not null default 'short' check (vibration_pattern in ('short', 'double', 'long')),
+  repeat_count smallint not null default 3 check (repeat_count between 1 and 6),
+  enabled boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists alarms_user_idx on public.alarms (user_id);
+alter table public.alarms enable row level security;
+drop policy if exists "own alarms" on public.alarms;
+create policy "own alarms" on public.alarms for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.alarms to authenticated;

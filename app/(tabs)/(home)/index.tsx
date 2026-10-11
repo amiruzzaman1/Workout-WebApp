@@ -10,6 +10,7 @@ import { useCoachStyle } from '../../../src/lib/coachStyle';
 import { refreshTodayNotifications } from '../../../src/lib/dailyNotifications';
 import { getExercise } from '../../../src/lib/exercises';
 import { groupColor, sessionGroups } from '../../../src/lib/groups';
+import { refreshAlarms } from '../../../src/lib/alarms';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
 import { computeTargets, totals } from '../../../src/lib/nutrition';
 import { refreshReminders } from '../../../src/lib/reminders';
@@ -25,7 +26,7 @@ function isoOf(d: Date) {
 }
 
 export default function DashboardScreen() {
-  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, water, sleep, weights } = useStore();
+  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, water, sleep, weights } = useStore();
   const router = useRouter();
   const [coachStyle] = useCoachStyle();
   const [quote, setQuote] = useState(() => randomQuote());
@@ -48,8 +49,9 @@ export default function DashboardScreen() {
       if (!ok) return;
       refreshTodayNotifications(todayLogged, todayTasks);
       refreshReminders(reminders);
+      refreshAlarms(alarms);
     });
-  }, [todayLogged, todayUndone, reminders]);
+  }, [todayLogged, todayUndone, reminders, alarms]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

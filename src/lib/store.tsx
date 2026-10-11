@@ -6,6 +6,7 @@ import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
 import { Recipe } from './recipes';
+import { Alarm } from './alarms';
 import { Reminder } from './reminders';
 import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
 import { supabase } from './supabase';
@@ -58,6 +59,10 @@ type Store = {
   addReminder: (row: Omit<Reminder, 'id'>) => Promise<Reminder>;
   updateReminder: (id: string, ch: Partial<Reminder>) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
+  alarms: Alarm[];
+  addAlarm: (row: Omit<Alarm, 'id'>) => Promise<Alarm>;
+  updateAlarm: (id: string, ch: Partial<Alarm>) => Promise<void>;
+  deleteAlarm: (id: string) => Promise<void>;
   refreshActivities: () => Promise<void>;
   weights: WeightLog[];
   logWeight: (row: WeightLog) => Promise<void>;
@@ -174,6 +179,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [weights, setWeights] = useState<WeightLog[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
@@ -193,6 +199,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setWeights([]);
       setTasks([]);
       setReminders([]);
+      setAlarms([]);
       setRecipes([]);
       return;
     }
@@ -219,6 +226,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setTasks((tk.data ?? []) as TaskItem[]);
     const { data: rmData } = await supabase.from('reminders').select('id,title,remind_time,repeat,remind_date').order('created_at', { ascending: true });
     setReminders((rmData ?? []) as Reminder[]);
+    const { data: alData } = await supabase.from('alarms').select('id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled').order('created_at', { ascending: true });
+    setAlarms((alData ?? []) as Alarm[]);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -522,6 +531,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const ALARM_COLS = 'id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled';
+  const addAlarm = useCallback(async (row: Omit<Alarm, 'id'>) => {
+    const { data, error } = await supabase.from('alarms').insert(row).select(ALARM_COLS).single();
+    if (error) throw new Error(error.message);
+    setAlarms((l) => [...l, data as Alarm]);
+    return data as Alarm;
+  }, []);
+
+  const updateAlarm = useCallback(async (id: string, ch: Partial<Alarm>) => {
+    setAlarms((l) => l.map((a) => (a.id === id ? { ...a, ...ch } : a)));
+    const { error } = await supabase.from('alarms').update(ch).eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
+  const deleteAlarm = useCallback(async (id: string) => {
+    setAlarms((l) => l.filter((a) => a.id !== id));
+    const { error } = await supabase.from('alarms').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, []);
+
   const addTask = useCallback(async (row: Omit<TaskItem, 'id' | 'done' | 'done_at'>) => {
     const { data, error } = await supabase.from('tasks').insert(row).select('id,day,title,category,target_minutes,done,done_at').single();
     if (error) throw new Error(error.message);
@@ -590,7 +619,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value: Store = {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
-    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
+    sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, alarms, addAlarm, updateAlarm, deleteAlarm, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, uploadAvatar, removeAvatar, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

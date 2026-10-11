@@ -5,7 +5,7 @@ import { useStore } from '../../../src/lib/store';
 import { A } from '../../../src/lib/theme';
 
 export default function TimeScreen() {
-  const { date, tasks } = useStore();
+  const { date, tasks, alarms } = useStore();
   const router = useRouter();
   const day = tasks.filter((t) => t.day === date);
   const left = day.filter((t) => !t.done).length;
@@ -17,6 +17,11 @@ export default function TimeScreen() {
         kind="secondary" icon="checkbox-outline" tint={A.core}
         title={day.length ? `Tasks: ${left} to do, ${day.length - left} done` : 'Plan tasks for this day'}
         onPress={() => router.push('/tracker/tasks')}
+      />
+      <Button
+        kind="secondary" icon="alarm-outline" tint={A.core}
+        title={alarms.length ? `Alarms: ${alarms.filter((a) => a.enabled).length} on` : 'Set up an alarm'}
+        onPress={() => router.push('/tracker/alarms')}
       />
       <TimeTrackerCard date={date} />
       <SleepCard date={date} />

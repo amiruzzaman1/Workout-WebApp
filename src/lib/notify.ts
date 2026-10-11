@@ -39,6 +39,36 @@ export async function initNotifications() {
     importance: Notifications.AndroidImportance.LOW,
     sound: null,
   });
+  // Alarms get their own channels, one per vibration shape, each duplicated with and without sound: Android
+  // only ever takes a notification's sound and vibration from the channel it is posted on (never a per
+  // notification override, on Android 8 and up), so every combination the Alarms page can offer needs its
+  // own channel created up front. MAX importance plus the phone's ALARM audio stream (not the notification
+  // or ringer one) is what lets the sound play even with the ringer turned down or the phone on silent, the
+  // same stream the stock Clock app's alarms use; bypassDnd only actually does anything once the user has
+  // separately granted this app "Do Not Disturb access" in system settings, which nothing here prompts for
+  // since Android has no normal runtime permission dialog for it, only harmless otherwise.
+  for (const [key, pattern] of Object.entries(ALARM_VIBRATION)) {
+    for (const sound of [true, false]) {
+      await Notifications.setNotificationChannelAsync(alarmChannelId(key as AlarmVibration, sound), {
+        name: `Alarm (${key === 'none' ? 'no vibration' : key}, ${sound ? 'sound' : 'silent'})`,
+        importance: Notifications.AndroidImportance.MAX,
+        sound: sound ? 'default' : null,
+        vibrationPattern: pattern,
+        enableVibrate: !!pattern,
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        ...(sound ? { audioAttributes: { usage: Notifications.AndroidAudioUsage.ALARM } } : null),
+      });
+    }
+  }
+}
+
+export type AlarmVibration = 'none' | 'short' | 'double' | 'long';
+const ALARM_VIBRATION: Record<AlarmVibration, number[] | null> = {
+  none: null, short: [0, 250], double: [0, 150, 120, 150], long: [0, 900],
+};
+export function alarmChannelId(vibration: AlarmVibration, sound: boolean): string {
+  return `alarm-${vibration}-${sound ? 'sound' : 'silent'}`;
 }
 
 /** Asks once; android 13+ and the browser both need this before anything can show. Returns whether it is allowed. */
@@ -94,7 +124,7 @@ export function cancelScheduled(id: string) {
 }
 
 /** Schedules one reminder for a future moment. Scheduling the same id again replaces it, it does not double up. */
-export function scheduleAt(id: string, when: Date, title: string, body: string) {
+export function scheduleAt(id: string, when: Date, title: string, body: string, channelId = 'reminders') {
   cancelScheduled(id);
   const ms = when.getTime() - Date.now();
   if (ms <= 0) return;
@@ -102,7 +132,7 @@ export function scheduleAt(id: string, when: Date, title: string, body: string) 
     if (!channelReady) return;
     Notifications.scheduleNotificationAsync({
       identifier: id,
-      content: { title, body, channelId: 'reminders' },
+      content: { title, body, channelId },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
     }).catch(() => {});
   } else {
@@ -111,6 +141,27 @@ export function scheduleAt(id: string, when: Date, title: string, body: string) 
     const capped = Math.min(ms, 2000000000);
     webTimers.set(id, setTimeout(() => { webTimers.delete(id); showWebNotification(title, body); }, capped));
   }
+}
+
+// How many times a single alarm notification can be posted in a row (see scheduleAlarmAt) and therefore how
+// many ids cancelAlarmAt always clears, whether or not that many were actually used for a given alarm.
+const MAX_ALARM_REPEATS = 6;
+
+/** An alarm "ringing" a few times is not one native concept on Android, there is no "repeat this sound and
+ *  vibration N times" option, so this posts the same notification N times a few seconds apart instead, each
+ *  one triggering the channel's sound and vibration pattern on its own. Scheduling the same id again (the
+ *  alarm changed, or it is just being refreshed) replaces every one of the previous copies first. */
+export function scheduleAlarmAt(id: string, when: Date, title: string, body: string, channelId: string, repeatCount: number) {
+  cancelAlarmAt(id);
+  const ms = when.getTime() - Date.now();
+  if (ms <= 0) return;
+  for (let i = 0; i < repeatCount; i++) {
+    scheduleAt(`${id}-${i}`, new Date(when.getTime() + i * 3000), title, body, channelId);
+  }
+}
+
+export function cancelAlarmAt(id: string) {
+  for (let i = 0; i < MAX_ALARM_REPEATS; i++) cancelScheduled(`${id}-${i}`);
 }
 
 // ---------------- the running timer's own ongoing notification ----------------
