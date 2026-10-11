@@ -6,7 +6,7 @@ import { Alarm, AlarmRepeat, nextOccurrence, REPEAT_LABEL, VIBRATION_LABEL } fro
 import { CalendarModal } from '../../../src/components/CalendarModal';
 import { TimeField } from '../../../src/components/TimeField';
 import { Button, Chip, Eyebrow, H1, hovered, Input, Label, P, Row, Screen, Section, smooth, Stepper } from '../../../src/components/ui';
-import { AlarmVibration } from '../../../src/lib/notify';
+import { AlarmVibration, MAX_ALARM_REPEATS } from '../../../src/lib/notify';
 import { DAY_SHORT, WEEK_ORDER } from '../../../src/lib/planner';
 import { confirm } from '../../../src/lib/confirm';
 import { todayISO } from '../../../src/lib/progress';
@@ -26,7 +26,10 @@ function AlarmSwitch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   const track = p.interpolate({ inputRange: [0, 1], outputRange: [C.border, A.up] });
   const knob = p.interpolate({ inputRange: [0, 1], outputRange: [2, 20] });
   return (
-    <Pressable onPress={onToggle} accessibilityRole="switch" accessibilityState={{ checked: on }} hitSlop={8}>
+    <Pressable
+      onPress={onToggle} accessibilityRole="switch" accessibilityState={{ checked: on }} hitSlop={8}
+      style={(st) => [{ borderRadius: 15, padding: 2 }, smooth, hovered(st) && { backgroundColor: C.card2 }]}
+    >
       <Animated.View style={[s.switchTrack, { backgroundColor: track }]}>
         <Animated.View style={[s.switchKnob, { transform: [{ translateX: knob }] }]} />
       </Animated.View>
@@ -54,7 +57,7 @@ function AlarmRow({ a, onToggle, onEdit, onDelete }: { a: Alarm; onToggle: () =>
   const color = A.core;
   return (
     <View style={[s.row, { borderTopColor: color, opacity: a.enabled ? 1 : 0.6 }]}>
-      <Pressable onPress={onEdit} style={{ flex: 1, minWidth: 0 }}>
+      <Pressable onPress={onEdit} style={(st) => [{ flex: 1, minWidth: 0, borderRadius: R.sm }, smooth, hovered(st) && { backgroundColor: C.card2 }]}>
         <Row style={{ gap: 10 }}>
           <Text style={s.time}>{fmt12(a.alarm_time)}</Text>
           <View style={{ flex: 1, minWidth: 0 }}>
@@ -159,7 +162,7 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
       )}
 
       <Label>Rings and buzzes this many times</Label>
-      <Stepper value={repeatCount} onChange={(v) => setRepeatCount(Math.max(1, Math.min(6, Math.round(v))))} />
+      <Stepper value={repeatCount} onChange={(v) => setRepeatCount(Math.max(1, Math.min(MAX_ALARM_REPEATS, Math.round(v))))} />
 
       {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13, marginTop: 6 }}>{error}</Text>}
       <Row style={{ gap: 8, marginTop: 12 }}>

@@ -42,8 +42,8 @@ function NotificationActions() {
         }
         case ACTION.openFood: router.push('/food/add'); break;
         case ACTION.openWorkout: router.push('/'); break;
-        case ACTION.openWeight: router.push('/progress'); break;
-        case ACTION.openPhotos: router.push('/progress'); break;
+        case ACTION.openWeight: router.push('/progress?tab=weight'); break;
+        case ACTION.openPhotos: router.push('/progress?tab=photos'); break;
         case ACTION.openChat: router.push('/coach-chat'); break;
       }
     });

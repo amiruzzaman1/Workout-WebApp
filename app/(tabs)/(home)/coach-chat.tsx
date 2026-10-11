@@ -109,7 +109,7 @@ export default function CoachChat() {
 
           <Row style={{ gap: 8, marginTop: 8 }}>
             <Input value={input} onChangeText={setInput} placeholder={`Ask ${name} something`} onSubmitEditing={send} returnKeyType="send" style={{ flex: 1 }} />
-            <Button icon="arrow-up" title="Send" onPress={send} disabled={!input.trim()} loading={thinking} />
+            <Button small icon="arrow-up" title="Send" onPress={send} disabled={!input.trim()} loading={thinking} />
           </Row>
         </>
       )}

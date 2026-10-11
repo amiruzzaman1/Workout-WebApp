@@ -162,9 +162,9 @@ export function VoiceCommand() {
     }
   }
 
-  async function act(it: VoiceIntent) {
+  async function act(it: VoiceIntent, withinMulti = false) {
     if (it.kind === 'multi') {
-      for (const sub of it.intents) await act(sub);
+      for (const sub of it.intents) await act(sub, true);
       return;
     }
     if (it.kind === 'start_timer') {
@@ -195,7 +195,11 @@ export function VoiceCommand() {
         eaten_on: todayISO(), meal: it.meal, name: it.food.name, brand: it.food.brand ?? null, barcode: it.food.barcode ?? null,
         amount: it.amount, unit: it.unit, serving_label: it.food.serving_label ?? null, source: it.food.source ?? null, ...m,
       } as any);
-      await remember(transcript.replace(/\bfor\s+(breakfast|lunch|dinner|tea|snack)\b/i, '').trim(), { kind: 'food', source: it.food.source ?? 'unknown', id: it.food.id ?? it.food.name, name: it.food.name });
+      // Within a 'multi' command the outer transcript is the whole sentence, not just this food's own
+      // clause ("log 2 eggs and start my study timer" would otherwise teach the dictionary that entire
+      // sentence means "eggs"), so it falls back to the food's own name instead of the heard words.
+      const rememberPhrase = withinMulti ? it.food.name : transcript.replace(/\bfor\s+(breakfast|lunch|dinner|tea|snack)\b/i, '').trim();
+      await remember(rememberPhrase, { kind: 'food', source: it.food.source ?? 'unknown', id: it.food.id ?? it.food.name, name: it.food.name });
     } else if (it.kind === 'delete_food') {
       await deleteFoodEntry(it.entry.id);
     } else if (it.kind === 'log_weight') {

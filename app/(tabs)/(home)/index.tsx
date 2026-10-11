@@ -79,7 +79,7 @@ export default function DashboardScreen() {
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog]);
+  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

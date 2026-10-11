@@ -174,8 +174,12 @@ export function cancelScheduled(id: string) {
   }
 }
 
-/** Schedules one reminder for a future moment. Scheduling the same id again replaces it, it does not double up. */
-export function scheduleAt(id: string, when: Date, title: string, body: string, channelId = 'reminders') {
+/** Schedules one reminder for a future moment. Scheduling the same id again replaces it, it does not double
+ *  up. channelId picks the sound/vibration/importance (an id from initNotifications(), 'reminders' unless
+ *  told otherwise); categoryId, separately, is what actually attaches action buttons (one of CATEGORY's
+ *  values) — the two are unrelated Android concepts and passing one where the other belongs silently drops
+ *  both the buttons and the real channel, which is exactly the bug this comment is here to stop coming back. */
+export function scheduleAt(id: string, when: Date, title: string, body: string, channelId = 'reminders', categoryId?: string) {
   cancelScheduled(id);
   const ms = when.getTime() - Date.now();
   if (ms <= 0) return;
@@ -183,7 +187,7 @@ export function scheduleAt(id: string, when: Date, title: string, body: string, 
     if (!channelReady) return;
     Notifications.scheduleNotificationAsync({
       identifier: id,
-      content: { title, body, channelId },
+      content: { title, body, channelId, ...(categoryId ? { categoryIdentifier: categoryId } : null) },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
     }).catch(() => {});
   } else {
@@ -195,8 +199,11 @@ export function scheduleAt(id: string, when: Date, title: string, body: string, 
 }
 
 // How many times a single alarm notification can be posted in a row (see scheduleAlarmAt) and therefore how
-// many ids cancelAlarmAt always clears, whether or not that many were actually used for a given alarm.
-const MAX_ALARM_REPEATS = 6;
+// many ids cancelAlarmAt always clears, whether or not that many were actually used for a given alarm. The
+// Alarms page's repeat count stepper imports this to clamp to the same number; the schema.sql CHECK
+// constraint on alarms.repeat_count is a separate, SQL side copy of the same ceiling, since SQL cannot
+// import a JS constant, so a change here needs that CHECK constraint updated by hand too.
+export const MAX_ALARM_REPEATS = 6;
 
 /** An alarm "ringing" a few times is not one native concept on Android, there is no "repeat this sound and
  *  vibration N times" option, so this posts the same notification N times a few seconds apart instead, each

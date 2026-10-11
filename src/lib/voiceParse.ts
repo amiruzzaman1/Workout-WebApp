@@ -226,6 +226,15 @@ export function parseTime(text: string): string | null {
   if (!m[3] && h === 0) return null; // a bare "0" from something else, not really a time
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
+
+/** Same as parseTime, but prefers a number actually introduced by "at"/"around"/"about" over whatever bare
+ *  number comes first in the sentence, falling back to parseTime's plain scan only if nothing is introduced
+ *  that way. Guards sleep_start/sleep_end, where a duration can easily sit right next to the real time
+ *  ("woke up after 8 hours of sleep, around 7") and a plain scan would grab the duration instead. */
+function parseTimeAt(text: string): string | null {
+  const m = text.match(/\b(?:at|around|about)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/);
+  return m ? parseTime(m[1]) : parseTime(text);
+}
 const REPEAT_WORDS: [RegExp, Repeat][] = [
   [/\bevery day\b|\bdaily\b/, 'daily'], [/\bevery week\b|\bweekly\b/, 'weekly'],
   [/\bevery month\b|\bmonthly\b/, 'monthly'], [/\bevery year\b|\byearly\b|\bannually\b/, 'yearly'],
@@ -245,8 +254,8 @@ function parseSingle(transcript: string, ctx: VoiceContext): VoiceIntent {
   // Going to bed or waking up: the same two things the Sleep card's "Bed now" and "Woke now" buttons already
   // do, just said instead of tapped. The clock time is captured once here, not read again at save time, so
   // what is shown on the confirm card is exactly what gets saved even if a few seconds pass before you confirm.
-  if (/\b(?:going|heading|off) to (?:bed|sleep)\b|\bi'?m going to sleep\b|\bgoodnight\b/.test(t)) return { kind: 'sleep_start', time: parseTime(t) ?? nowClock() };
-  if (/\b(?:just )?woke up\b|\bwaking up\b|\bi'?m awake\b|\bgood morning\b/.test(t)) return { kind: 'sleep_end', time: parseTime(t) ?? nowClock() };
+  if (/\b(?:going|heading|off) to (?:bed|sleep)\b|\bi'?m going to sleep\b|\bgoodnight\b/.test(t)) return { kind: 'sleep_start', time: parseTimeAt(t) ?? nowClock() };
+  if (/\b(?:just )?woke up\b|\bwaking up\b|\bi'?m awake\b|\bgood morning\b/.test(t)) return { kind: 'sleep_end', time: parseTimeAt(t) ?? nowClock() };
 
   // "start", "track", "time tracker" and "log time" are all the same request in plain speech, and the words
   // "timer", "tracker", "time" and "tracking" are the name of the feature, not part of the activity's own

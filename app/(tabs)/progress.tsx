@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from '../../src/components/BarChart';
@@ -49,8 +49,13 @@ const TABS: { key: Tab; label: string; color: string; icon: React.ComponentProps
   { key: 'sleep', label: 'Sleep', color: A.fat, icon: 'moon-outline' },
 ];
 
+const TAB_KEYS = TABS.map((t) => t.key);
+
 export default function ProgressScreen() {
-  const [tab, setTab] = useState<Tab>('weight');
+  // A notification action (e.g. the progress photo nudge) can ask to land on a specific tab instead of
+  // always Weight, via ?tab=photos; anything else or missing just falls back to the usual default.
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<Tab>(() => (TAB_KEYS.includes(tabParam as Tab) ? (tabParam as Tab) : 'weight'));
   return (
     <Screen>
       <Eyebrow>Progress</Eyebrow>
@@ -317,10 +322,10 @@ function PhotosTab() {
               <Row style={{ justifyContent: 'space-between', marginTop: 12 }}>
                 <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 15 }}>{nice(viewed.day, true)}</Text>
                 <Row style={{ gap: 14 }}>
-                  <Pressable onPress={() => remove(viewed.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete this photo">
+                  <Pressable onPress={() => remove(viewed.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete this photo" style={(st) => [{ padding: 4, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: A.over + '22' }]}>
                     <Ionicons name="trash-outline" size={20} color={A.over} />
                   </Pressable>
-                  <Pressable onPress={() => setViewing(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                  <Pressable onPress={() => setViewing(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close" style={(st) => [{ padding: 4, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: C.card2 }]}>
                     <Ionicons name="close" size={22} color={C.muted} />
                   </Pressable>
                 </Row>

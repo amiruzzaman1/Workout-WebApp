@@ -63,9 +63,9 @@ export function scheduleMissedLogReminders(opts: { loggedFoodToday: boolean; tas
         ? 'You have not logged any food today.'
         : `${opts.tasksLeftToday} task${opts.tasksLeftToday === 1 ? '' : 's'} still left on today's list.`;
     if (streakAtRisk) {
-      scheduleAt(id, when, "Don't lose your streak", `Your ${opts.streakDays} day streak ends at midnight if you do not log something today (food, a workout, your weight, or sleep).`, CATEGORY.logNudge);
+      scheduleAt(id, when, "Don't lose your streak", `Your ${opts.streakDays} day streak ends at midnight if you do not log something today (food, a workout, your weight, or sleep).`, 'reminders', CATEGORY.logNudge);
     } else {
-      scheduleAt(id, when, "Don't forget to log today", body, CATEGORY.logNudge);
+      scheduleAt(id, when, "Don't forget to log today", body, 'reminders', CATEGORY.logNudge);
     }
   }
 }
@@ -80,7 +80,7 @@ export function scheduleWorkoutReminder(opts: { plannedToday: boolean; sessionTi
   scheduleAt(
     id, when, "Today's workout is waiting",
     opts.sessionTitle ? `${opts.sessionTitle} is still on today's plan.` : 'Your planned session for today is still open.',
-    CATEGORY.workoutNudge,
+    'reminders', CATEGORY.workoutNudge,
   );
 }
 
@@ -90,7 +90,7 @@ export function scheduleWeighInReminder(daysSinceLastWeighIn: number | null) {
   const id = 'weighin-reminder';
   const overdue = daysSinceLastWeighIn == null || daysSinceLastWeighIn >= 7;
   if (!overdue) { cancelScheduled(id); return; }
-  scheduleAt(id, nextWeekday(1, 9, 0), 'Time for a weigh in', "It's been a week or more. A quick weigh in keeps your targets accurate.", CATEGORY.weighInNudge);
+  scheduleAt(id, nextWeekday(1, 9, 0), 'Time for a weigh in', "It's been a week or more. A quick weigh in keeps your targets accurate.", 'reminders', CATEGORY.weighInNudge);
 }
 
 /** Afternoon nudge (3pm) if water is well behind pace for the day. Scheduled from whatever the water
@@ -100,7 +100,7 @@ export function scheduleWaterNudge(waterPct: number | null) {
   const id = 'water-nudge';
   const when = at(15, 0);
   if (waterPct == null || waterPct >= 0.4 || when <= new Date()) { cancelScheduled(id); return; }
-  scheduleAt(id, when, 'Running low on water', `Only about ${Math.round(waterPct * 100)}% of today's water goal so far.`, CATEGORY.logNudge);
+  scheduleAt(id, when, 'Running low on water', `Only about ${Math.round(waterPct * 100)}% of today's water goal so far.`, 'reminders', CATEGORY.logNudge);
 }
 
 /** A nudge (next Monday, 9:30am, alongside the weigh in one) once two weeks or more have passed since the
@@ -109,7 +109,7 @@ export function scheduleProgressPhotoReminder(daysSinceLastPhoto: number | null)
   const id = 'photo-reminder';
   const overdue = daysSinceLastPhoto == null || daysSinceLastPhoto >= 14;
   if (!overdue) { cancelScheduled(id); return; }
-  scheduleAt(id, nextWeekday(1, 9, 30), 'Add a progress photo', "It's been two weeks or more. Visual change often shows up before the scale does.", CATEGORY.photoNudge);
+  scheduleAt(id, nextWeekday(1, 9, 30), 'Add a progress photo', "It's been two weeks or more. Visual change often shows up before the scale does.", 'reminders', CATEGORY.photoNudge);
 }
 
 /** A "we miss you" nudge for tomorrow morning once the app has gone genuinely quiet (2 or more days with
@@ -121,7 +121,7 @@ export function scheduleInactivityWinBack(daysSinceAnyLog: number | null) {
   if (daysSinceAnyLog == null || daysSinceAnyLog < 2) { cancelScheduled(id); return; }
   const style = getCoachStyle();
   const title = style === 'female' ? "I've been thinking about you" : "Don't make me come find you";
-  scheduleAt(id, at(10, 0, 1), title, `It's been ${daysSinceAnyLog} days. Come back and keep going, your streak and goals are still waiting.`, CATEGORY.coachNudge);
+  scheduleAt(id, at(10, 0, 1), title, `It's been ${daysSinceAnyLog} days. Come back and keep going, your streak and goals are still waiting.`, 'reminders', CATEGORY.coachNudge);
 }
 
 /** Call once when the app opens (or the Dashboard mounts) with what today (and lately) looks like so far. */
