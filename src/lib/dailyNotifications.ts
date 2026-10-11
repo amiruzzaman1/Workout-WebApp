@@ -32,11 +32,15 @@ export function scheduleDailyCheckIns() {
 /**
  * The 12 pm, 6 pm and 12 am "did you log today" reminders. Call this again right after food is logged (or a
  * task is ticked off) so the rest of today's reminders are cancelled instead of nagging about something done.
+ * When a day streak (src/lib/streak.ts, food, a workout, a weigh in or sleep, not just food) is actually
+ * running and still not logged today, the nudge leads with that instead, since "you will lose your streak"
+ * is a much stronger reason to open the app than "you have not logged food" on its own.
  */
-export function scheduleMissedLogReminders(opts: { loggedFoodToday: boolean; tasksLeftToday: number }) {
+export function scheduleMissedLogReminders(opts: { loggedFoodToday: boolean; tasksLeftToday: number; streakDays: number; loggedSomethingToday: boolean }) {
   const allDone = opts.loggedFoodToday && opts.tasksLeftToday === 0;
+  const streakAtRisk = opts.streakDays > 0 && !opts.loggedSomethingToday;
   for (const [id, h, m] of MISS_TIMES) {
-    if (allDone) { cancelScheduled(id); continue; }
+    if (allDone && !streakAtRisk) { cancelScheduled(id); continue; }
     const when = at(h, m);
     if (when <= new Date()) { cancelScheduled(id); continue; } // today's slot already passed, nothing to move it to
     const body = !opts.loggedFoodToday && opts.tasksLeftToday > 0
@@ -44,12 +48,19 @@ export function scheduleMissedLogReminders(opts: { loggedFoodToday: boolean; tas
       : !opts.loggedFoodToday
         ? 'You have not logged any food today.'
         : `${opts.tasksLeftToday} task${opts.tasksLeftToday === 1 ? '' : 's'} still left on today's list.`;
-    scheduleAt(id, when, "Don't forget to log today", body);
+    if (streakAtRisk) {
+      scheduleAt(id, when, "Don't lose your streak", `Your ${opts.streakDays} day streak ends at midnight if you do not log something today (food, a workout, your weight, or sleep).`);
+    } else {
+      scheduleAt(id, when, "Don't forget to log today", body);
+    }
   }
 }
 
 /** Call once when the app opens (or the Dashboard mounts) with what today looks like so far. */
-export function refreshTodayNotifications(todayFoodLogged: boolean, tasksToday: TaskItem[]) {
+export function refreshTodayNotifications(todayFoodLogged: boolean, tasksToday: TaskItem[], streak: { days: number; loggedToday: boolean }) {
   scheduleDailyCheckIns();
-  scheduleMissedLogReminders({ loggedFoodToday: todayFoodLogged, tasksLeftToday: tasksToday.filter((t) => !t.done).length });
+  scheduleMissedLogReminders({
+    loggedFoodToday: todayFoodLogged, tasksLeftToday: tasksToday.filter((t) => !t.done).length,
+    streakDays: streak.days, loggedSomethingToday: streak.loggedToday,
+  });
 }

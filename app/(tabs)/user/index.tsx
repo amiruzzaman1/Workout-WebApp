@@ -11,6 +11,7 @@ import { confirm } from '../../../src/lib/confirm';
 import { computeTargets, JOB_LABELS, JobActivity } from '../../../src/lib/nutrition';
 import { DAY_SHORT, SPLIT_LABELS, WEEK_ORDER } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
+import { currentStreak, loggedDaySet } from '../../../src/lib/streak';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
 
@@ -22,13 +23,6 @@ const GOAL: Record<string, string> = {
   strength: 'Get stronger',
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function shift(isoDay: string, days: number) {
-  const d = new Date(isoDay + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  const z = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
-}
 
 export default function UserScreen() {
   const { profile, session, signOut, uploadAvatar, removeAvatar, foodEntries, logs, weights, sleep } = useStore();
@@ -43,17 +37,8 @@ export default function UserScreen() {
 
   // Days in a row with anything logged: food, a workout, a weigh in or sleep.
   const { streak, loggedDays } = useMemo(() => {
-    const days = new Set<string>([
-      ...foodEntries.map((e) => e.eaten_on),
-      ...logs.map((l) => l.performed_on),
-      ...weights.map((w) => w.day),
-      ...sleep.map((s) => s.night_of),
-    ]);
-    let d = todayISO();
-    if (!days.has(d)) d = shift(d, -1);
-    let n = 0;
-    while (days.has(d)) { n++; d = shift(d, -1); }
-    return { streak: n, loggedDays: days.size };
+    const days = loggedDaySet({ foodEntries, logs, weights, sleep });
+    return { streak: currentStreak(days, todayISO()), loggedDays: days.size };
   }, [foodEntries, logs, weights, sleep]);
 
   if (!profile) return null;

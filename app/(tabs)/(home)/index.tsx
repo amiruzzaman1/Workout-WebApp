@@ -1,10 +1,11 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
-import { Button, Eyebrow, H1, IconBadge, P, Row, Screen, Section } from '../../../src/components/ui';
+import { Button, Eyebrow, H1, hovered, IconBadge, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
 import { useCoachStyle } from '../../../src/lib/coachStyle';
 import { refreshTodayNotifications } from '../../../src/lib/dailyNotifications';
@@ -17,6 +18,7 @@ import { PlanSession, uid } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
+import { currentStreak, loggedDaySet } from '../../../src/lib/streak';
 import { A, C, F, R, TYPE } from '../../../src/lib/theme';
 
 export default function DashboardScreen() {
@@ -31,6 +33,14 @@ export default function DashboardScreen() {
     return () => clearInterval(id);
   }, []);
 
+  // A day streak: anything logged at all (food, a workout, a weigh in, sleep), not just training, the same
+  // number the User page badge, this screen's banner, and the "don't lose it" notification nudge all use,
+  // so the three of them can never disagree.
+  const todayStr = todayISO();
+  const loggedDays = useMemo(() => loggedDaySet({ foodEntries, logs, weights, sleep }), [foodEntries, logs, weights, sleep]);
+  const dayStreak = currentStreak(loggedDays, todayStr);
+  const loggedSomethingToday = loggedDays.has(todayStr);
+
   // Daily check ins and the "did you log today" nudges. No server behind these, so this just works out the
   // next one each time the Dashboard is open and (re)schedules it; see src/lib/notify.ts for what that means
   // on the web versus on the phone.
@@ -41,11 +51,11 @@ export default function DashboardScreen() {
     initNotifications();
     requestNotifyPermission().then((ok) => {
       if (!ok) return;
-      refreshTodayNotifications(todayLogged, todayTasks);
+      refreshTodayNotifications(todayLogged, todayTasks, { days: dayStreak, loggedToday: loggedSomethingToday });
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [todayLogged, todayUndone, reminders, alarms]);
+  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();
@@ -87,6 +97,8 @@ export default function DashboardScreen() {
 
   return (
     <Screen>
+      <StreakBanner days={dayStreak} loggedToday={loggedSomethingToday} onPress={() => router.push('/food/add')} />
+
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>
         <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} onChat={() => router.push('/coach-chat')} />
       </Section>
@@ -158,6 +170,40 @@ export default function DashboardScreen() {
     </Screen>
   );
 }
+
+/** A streak banner at the very top of the Dashboard, the first thing seen on opening the app, so there is
+ *  always a reason to come back and log something today rather than let the number reset. Tapping it when
+ *  nothing is logged yet today jumps straight to adding a food entry, the quickest way to keep it alive. */
+function StreakBanner({ days, loggedToday, onPress }: { days: number; loggedToday: boolean; onPress: () => void }) {
+  const color = loggedToday ? A.up : days > 0 ? A.cardio : C.muted;
+  const title = days === 0 ? 'Start a streak today' : `${days} day streak`;
+  const sub = loggedToday
+    ? 'Logged today, keep it going tomorrow.'
+    : days > 0
+      ? 'Log anything today, food, a workout, your weight or sleep, to keep it going.'
+      : 'Log anything today, food, a workout, your weight or sleep, to start one.';
+  return (
+    <Pressable
+      onPress={onPress} disabled={loggedToday} accessibilityRole="button"
+      accessibilityLabel={loggedToday ? `${title}, already logged today` : `${title}, tap to log something`}
+      style={(p) => [sb.wrap, { borderTopColor: color }, smooth, !loggedToday && hovered(p) && { backgroundColor: C.card2 }]}
+    >
+      <Text style={sb.flame}>{days > 0 ? '🔥' : '➕'}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[sb.title, { color }]}>{title}</Text>
+        <Text style={sb.sub} numberOfLines={1}>{sub}</Text>
+      </View>
+      {loggedToday && <Ionicons name="checkmark-circle" size={20} color={A.up} />}
+    </Pressable>
+  );
+}
+
+const sb = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderTopWidth: 2, borderRadius: R.lg, padding: 14, marginTop: 4, marginBottom: 14 },
+  flame: { fontSize: 24 },
+  title: { fontFamily: F.display, fontSize: 17, letterSpacing: -0.3 },
+  sub: { color: C.muted, fontFamily: F.body, fontSize: 12.5, marginTop: 2 },
+});
 
 const st = StyleSheet.create({
   quote: { backgroundColor: C.card, borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.lg, borderTopWidth: 2, borderTopColor: C.inverse, paddingHorizontal: 18, paddingTop: 40, paddingBottom: 16, gap: 10, overflow: 'hidden' },
