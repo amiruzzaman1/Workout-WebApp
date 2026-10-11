@@ -7,6 +7,7 @@ import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
 import { Recipe } from './recipes';
 import { Alarm } from './alarms';
+import { ProgressPhoto } from './photos';
 import { Reminder } from './reminders';
 import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
 import { supabase } from './supabase';
@@ -70,6 +71,11 @@ type Store = {
   saveProfile: (p: Partial<Profile>) => Promise<Profile>;
   uploadAvatar: (uri: string) => Promise<string>;
   removeAvatar: () => Promise<void>;
+  progressPhotos: ProgressPhoto[];
+  addProgressPhoto: (uri: string, day: string, note?: string | null) => Promise<ProgressPhoto>;
+  deleteProgressPhoto: (id: string) => Promise<void>;
+  /** Private bucket, so there is no public url; this signs however many ids are visible right now, good for an hour. */
+  signProgressPhotos: (ids: string[]) => Promise<Record<string, string>>;
   savePlan: (data: PlanData) => Promise<void>;
   regeneratePlan: (p?: Profile) => Promise<void>;
   toggleEquipment: (key: string) => Promise<void>;
@@ -180,6 +186,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [alarms, setAlarms] = useState<Alarm[]>([]);
+  const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
@@ -200,6 +207,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setTasks([]);
       setReminders([]);
       setAlarms([]);
+      setProgressPhotos([]);
       setRecipes([]);
       return;
     }
@@ -228,6 +236,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setReminders((rmData ?? []) as Reminder[]);
     const { data: alData } = await supabase.from('alarms').select('id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled').order('created_at', { ascending: true });
     setAlarms((alData ?? []) as Alarm[]);
+    const { data: ppData } = await supabase.from('progress_photos').select('id,day,note,created_at').order('day', { ascending: false });
+    setProgressPhotos((ppData ?? []) as ProgressPhoto[]);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -330,6 +340,51 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await supabase.storage.from('avatars').remove([`${session.user.id}/avatar.jpg`]);
     await saveProfile({ avatar_url: null });
   }, [session, saveProfile]);
+
+  // Unlike the avatar, this bucket is private (nobody else can see these, not even other signed in users),
+  // so the row is inserted first to get a real id, which also becomes the file's own name, then the file is
+  // uploaded under it; if the upload fails the row is removed again rather than left pointing at nothing.
+  const addProgressPhoto = useCallback(
+    async (uri: string, day: string, note?: string | null) => {
+      if (!session) throw new Error('Not signed in');
+      const { data: row, error: insertErr } = await supabase.from('progress_photos').insert({ day, note: note ?? null }).select('id,day,note,created_at').single();
+      if (insertErr) throw new Error(insertErr.message);
+      try {
+        const res = await fetch(uri);
+        const blob = await res.blob();
+        const path = `${session.user.id}/${row.id}.jpg`;
+        const { error: upErr } = await supabase.storage.from('progress_photos').upload(path, blob, { contentType: blob.type || 'image/jpeg' });
+        if (upErr) throw new Error(upErr.message);
+      } catch (e) {
+        await supabase.from('progress_photos').delete().eq('id', row.id);
+        throw e;
+      }
+      setProgressPhotos((l) => [row as ProgressPhoto, ...l].sort((a, b) => b.day.localeCompare(a.day)));
+      return row as ProgressPhoto;
+    },
+    [session],
+  );
+
+  const deleteProgressPhoto = useCallback(async (id: string) => {
+    if (!session) throw new Error('Not signed in');
+    setProgressPhotos((l) => l.filter((p) => p.id !== id));
+    await supabase.storage.from('progress_photos').remove([`${session.user.id}/${id}.jpg`]);
+    const { error } = await supabase.from('progress_photos').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+  }, [session]);
+
+  const signProgressPhotos = useCallback(
+    async (ids: string[]) => {
+      if (!session || ids.length === 0) return {};
+      const paths = ids.map((id) => `${session.user.id}/${id}.jpg`);
+      const { data, error } = await supabase.storage.from('progress_photos').createSignedUrls(paths, 3600);
+      if (error || !data) return {};
+      const out: Record<string, string> = {};
+      data.forEach((d, i) => { if (d.signedUrl) out[ids[i]] = d.signedUrl; });
+      return out;
+    },
+    [session],
+  );
 
   const savePlan = useCallback(
     async (data: PlanData) => {
@@ -620,7 +675,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ready, session, profile, plan, customExercises, equipment, logs, addLog, updateLog, deleteLog, visits, activeVisit, startVisit, endVisit,
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
     sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, alarms, addAlarm, updateAlarm, deleteAlarm, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
-    saveProfile, uploadAvatar, removeAvatar, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
+    saveProfile, uploadAvatar, removeAvatar, progressPhotos, addProgressPhoto, deleteProgressPhoto, signProgressPhotos, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

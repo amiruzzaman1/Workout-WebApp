@@ -13,6 +13,8 @@
 // runs now. It is also a fifth of the download size, a welcome side effect.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
+import { CoachContext } from './coach';
+import { COACHES, CoachStyle } from './coachStyle';
 import { Food, FoodEntry, Meal } from './nutrition';
 import { Goal } from './planner';
 import { Reminder, Repeat } from './reminders';
@@ -117,6 +119,30 @@ function systemPrompt(ctx: VoiceContext): string {
 
 export function buildPrompt(transcript: string, ctx: VoiceContext): string {
   return `${systemPrompt(ctx)}\n\nThe user said: "${transcript}"\nJSON:`;
+}
+
+/** A free form question answered in character as your chosen coach (same two voices as coach.ts's scripted
+ *  lines), grounded in your real progress. Plain text back, not the JSON contract above, since this is a
+ *  conversation, not an action to carry out. */
+export function buildCoachPrompt(question: string, voice: CoachStyle, ctx: CoachContext): string {
+  const { name, blurb } = COACHES[voice];
+  const stats = [
+    `This week: ${ctx.weekDone} of ${ctx.weekPlanned} planned workouts done. Total workouts ever: ${ctx.totalWorkouts}.`,
+    ctx.daysSinceLast != null ? `Days since the last workout: ${ctx.daysSinceLast}.` : 'No workout logged yet.',
+    `Food logged today: ${ctx.foodLogged ? 'yes' : 'not yet'}.`,
+    ctx.proteinPct != null ? `Protein today: ${Math.round(ctx.proteinPct * 100)}% of target.` : null,
+    ctx.waterPct != null ? `Water today: ${Math.round(ctx.waterPct * 100)}% of target.` : null,
+    ctx.sleepMinutes != null ? `Slept last night: ${Math.round((ctx.sleepMinutes / 60) * 10) / 10} hours.` : null,
+    ctx.goalPct != null ? `${Math.round(ctx.goalPct * 100)}% of the way to the weight goal.` : null,
+  ].filter((l): l is string => !!l).join('\n');
+  return [
+    `You are ${name}, a gym coach inside a fitness app. ${blurb}`,
+    'Answer the question in one short paragraph, fully in character, about effort and progress, never about body or identity, and with no dashes in your writing.',
+    'Use the numbers below only where they are actually relevant to the question; never invent a number you were not given.',
+    stats,
+    `The user asks: "${question}"`,
+    `${name}'s answer:`,
+  ].join('\n\n');
 }
 
 /** Pulls out the first {...} block, since a small model sometimes wraps the JSON in a sentence despite being told not to. */

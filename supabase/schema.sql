@@ -405,3 +405,30 @@ drop policy if exists "own alarms" on public.alarms;
 create policy "own alarms" on public.alarms for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.alarms to authenticated;
+
+-- v17: progress photos. Unlike avatars, nobody else can see these, not even other signed in users, since
+-- they are a lot more personal; the bucket is private and the app shows them with a short lived signed url
+-- instead of a public one. One row per photo (the day it was taken, an optional note); the file itself
+-- lives in Storage, bucket progress_photos, path <user id>/<a random name>.jpg.
+create table if not exists public.progress_photos (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day date not null,
+  note text,
+  created_at timestamptz not null default now()
+);
+create index if not exists progress_photos_user_idx on public.progress_photos (user_id);
+alter table public.progress_photos enable row level security;
+drop policy if exists "own progress photos" on public.progress_photos;
+create policy "own progress photos" on public.progress_photos for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.progress_photos to authenticated;
+
+insert into storage.buckets (id, name, public)
+values ('progress_photos', 'progress_photos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "progress photo own" on storage.objects;
+create policy "progress photo own" on storage.objects for all to authenticated
+  using (bucket_id = 'progress_photos' and (storage.foldername(name))[1] = (select auth.uid())::text)
+  with check (bucket_id = 'progress_photos' and (storage.foldername(name))[1] = (select auth.uid())::text);

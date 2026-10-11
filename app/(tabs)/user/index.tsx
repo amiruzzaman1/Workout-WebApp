@@ -292,6 +292,11 @@ export default function UserScreen() {
             sub={!ai.available ? 'Android only' : ai.status === 'downloaded' ? (ai.enabled ? 'On' : 'Downloaded, turned off') : ai.status === 'downloading' ? `Downloading, ${Math.round(ai.progress * 100)}%` : 'Not downloaded'}
             onPress={() => router.push('/user/ai')}
           />
+          <Setting
+            icon="shield-checkmark-outline" color={C.muted} title="Privacy policy"
+            sub="What is stored, and who can see it"
+            onPress={() => router.push('/user/privacy')}
+          />
         </View>
       </Section>
     </Screen>

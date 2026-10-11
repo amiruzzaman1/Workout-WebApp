@@ -1,13 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Image, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BarChart } from '../../src/components/BarChart';
 import { catColor } from '../../src/components/DayTrackers';
 import { ExerciseThumb } from '../../src/components/ExerciseAnimation';
 import { LineChart } from '../../src/components/LineChart';
 import { dayLabel } from '../../src/components/AppHeader';
 import { Button, Card, Chip, Eyebrow, H1, H2, hovered, HoverTip, Input, Label, ListRow, P, Row, Screen, Section, smooth, Stat } from '../../src/components/ui';
+import { confirm } from '../../src/lib/confirm';
 import { getExercise } from '../../src/lib/exercises';
 import { computeTargets, MEAL_LABELS, MEALS, round, totals } from '../../src/lib/nutrition';
 import { metricFor } from '../../src/lib/planner';
@@ -38,9 +40,10 @@ function nice(isoDay: string, withDay = false) {
 }
 const dayNum = (isoDay: string) => Math.round(new Date(isoDay + 'T00:00:00').getTime() / 864e5);
 
-type Tab = 'weight' | 'food' | 'training' | 'sleep';
+type Tab = 'weight' | 'photos' | 'food' | 'training' | 'sleep';
 const TABS: { key: Tab; label: string; color: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'weight', label: 'Weight', color: A.protein, icon: 'scale-outline' },
+  { key: 'photos', label: 'Photos', color: A.core, icon: 'images-outline' },
   { key: 'food', label: 'Food', color: A.carbs, icon: 'restaurant-outline' },
   { key: 'training', label: 'Training', color: A.up, icon: 'barbell-outline' },
   { key: 'sleep', label: 'Sleep', color: A.fat, icon: 'moon-outline' },
@@ -64,6 +67,7 @@ export default function ProgressScreen() {
         })}
       </View>
       {tab === 'weight' && <WeightTab />}
+      {tab === 'photos' && <PhotosTab />}
       {tab === 'food' && <FoodTab />}
       {tab === 'training' && <TrainingTab />}
       {tab === 'sleep' && <SleepTab />}
@@ -231,6 +235,100 @@ function WeightTab() {
           {history.length > 8 && <Button small kind="ghost" icon={showAll ? 'chevron-up' : 'chevron-down'} title={showAll ? 'Show less' : `Show all ${history.length}`} onPress={() => setShowAll(!showAll)} />}
         </Section>
       )}
+    </>
+  );
+}
+
+// ---------------- Photos ----------------
+
+function PhotosTab() {
+  const { progressPhotos, addProgressPhoto, deleteProgressPhoto, signProgressPhotos, date: day } = useStore();
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<string | null>(null);
+
+  // The bucket is private, so there is no plain public address; a short lived signed one is fetched for
+  // whatever is in the list right now, refreshed whenever a photo is added or removed.
+  useEffect(() => {
+    const ids = progressPhotos.map((p) => p.id);
+    if (!ids.length) { setUrls({}); return; }
+    signProgressPhotos(ids).then(setUrls);
+  }, [progressPhotos]);
+
+  async function add() {
+    setError(null);
+    if (Platform.OS !== 'web') {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setError('Allow photo access in your phone settings to add a progress photo.'); return; }
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.7 });
+    if (result.canceled || !result.assets?.length) return;
+    setBusy(true);
+    try {
+      await addProgressPhoto(result.assets[0].uri, day);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not upload that photo. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (await confirm('Delete this photo?', 'It will be removed for good.', { confirmText: 'Delete', danger: true })) {
+      await deleteProgressPhoto(id);
+      if (viewing === id) setViewing(null);
+    }
+  }
+
+  const sortedPhotos = [...progressPhotos].sort((a, b) => b.day.localeCompare(a.day));
+  const viewed = sortedPhotos.find((p) => p.id === viewing) ?? null;
+
+  return (
+    <>
+      <Card style={{ marginTop: 18, gap: 8 }}>
+        <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 13, lineHeight: 19 }}>
+          Visual change often shows up before the scale does. Only you can see these, not even a friend who also uses Forge.
+        </Text>
+        <Button icon="camera-outline" title={`Add a photo for ${dayLabel(day)}`} onPress={add} loading={busy} style={{ alignSelf: 'flex-start' }} />
+        {!!error && <Text style={{ color: A.over, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
+      </Card>
+
+      <Section title={sortedPhotos.length ? `${sortedPhotos.length} photo${sortedPhotos.length === 1 ? '' : 's'}` : 'Your timeline'} icon="images" color={A.core}>
+        {sortedPhotos.length === 0 ? (
+          <P muted style={{ fontSize: 13 }}>No progress photos yet. Add one on the day you weigh in to build a timeline over time.</P>
+        ) : (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {sortedPhotos.map((p) => (
+              <Pressable key={p.id} onPress={() => setViewing(p.id)} accessibilityRole="button" accessibilityLabel={`Photo from ${nice(p.day, true)}`} style={(st) => [pst.thumbWrap, smooth, hovered(st) && { borderColor: A.core }]}>
+                {urls[p.id] ? <Image source={{ uri: urls[p.id] }} style={pst.thumb} /> : <View style={[pst.thumb, { backgroundColor: C.card2 }]} />}
+                <Text style={pst.thumbDate}>{nice(p.day)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </Section>
+
+      <Modal visible={!!viewed} transparent animationType="fade" onRequestClose={() => setViewing(null)}>
+        <Pressable style={pst.backdrop} onPress={() => setViewing(null)}>
+          {!!viewed && (
+            <Pressable style={pst.viewer} onPress={(e) => e.stopPropagation()}>
+              {urls[viewed.id] ? <Image source={{ uri: urls[viewed.id] }} style={pst.full} resizeMode="contain" /> : <View style={[pst.full, { backgroundColor: C.card2 }]} />}
+              <Row style={{ justifyContent: 'space-between', marginTop: 12 }}>
+                <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 15 }}>{nice(viewed.day, true)}</Text>
+                <Row style={{ gap: 14 }}>
+                  <Pressable onPress={() => remove(viewed.id)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete this photo">
+                    <Ionicons name="trash-outline" size={20} color={A.over} />
+                  </Pressable>
+                  <Pressable onPress={() => setViewing(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+                    <Ionicons name="close" size={22} color={C.muted} />
+                  </Pressable>
+                </Row>
+              </Row>
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -709,4 +807,13 @@ const st = StyleSheet.create({
   hDiff: { width: 44, textAlign: 'right', fontFamily: F.bodySemi, fontSize: 12 },
   barLabel: { color: C.text, fontFamily: F.bodySemi, fontSize: 13 },
   legendV: { fontFamily: F.display, fontSize: 18, letterSpacing: -0.4 },
+});
+
+const pst = StyleSheet.create({
+  thumbWrap: { width: 104, borderRadius: R.md, borderWidth: 1, borderColor: C.border, overflow: 'hidden', backgroundColor: C.card },
+  thumb: { width: '100%', height: 134 },
+  thumbDate: { color: C.muted, fontFamily: F.body, fontSize: 11, textAlign: 'center', paddingVertical: 5 },
+  backdrop: { flex: 1, backgroundColor: '#000000cc', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  viewer: { width: '100%', maxWidth: 420, backgroundColor: C.card, borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.lg, padding: 14 },
+  full: { width: '100%', height: 420, borderRadius: R.md, backgroundColor: C.bg },
 });

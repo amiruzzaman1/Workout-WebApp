@@ -12,8 +12,10 @@ const LABEL: Record<CoachStyle, Record<Coach['tone'], string>> = {
   female: { good: 'Mirko is proud of you', bad: 'Mirko is checking in', neutral: 'Mirko' },
 };
 
-/** Your coach as an animated character with a speech bubble. Tap the small button to swap between Goku and Mirko, or tap the bubble for another line. */
-export function CoachCard({ coach, gender = 'male', onReroll }: { coach: Coach; gender?: CoachStyle; onReroll?: () => void }) {
+/** Your coach as an animated character with a speech bubble. Tap the small button to swap between Goku and
+ *  Mirko, tap the bubble for another line, or Chat to actually ask it something (needs the AI model turned
+ *  on in User settings; onChat is only passed in where that is checked). */
+export function CoachCard({ coach, gender = 'male', onReroll, onChat }: { coach: Coach; gender?: CoachStyle; onReroll?: () => void; onChat?: () => void }) {
   const other: CoachStyle = gender === 'male' ? 'female' : 'male';
   // The picture takes about a third of the card, between a small phone and a big screen.
   const stageW = Math.max(92, Math.min(128, Math.round((usePageWidth() + 40) * 0.32)));
@@ -37,15 +39,28 @@ export function CoachCard({ coach, gender = 'male', onReroll }: { coach: Coach; 
           <Text style={s.line}>{coach.line}</Text>
         </Pressable>
       </View>
-      <Pressable
-        onPress={() => setCoachStyle(other)}
-        accessibilityRole="button"
-        accessibilityLabel={`Switch coach to ${COACHES[other].name}`}
-        style={(p) => [s.switch, smooth, hovered(p) && { backgroundColor: C.card2, borderColor: C.text }, p.pressed && { opacity: 0.7 }]}
-      >
-        <Ionicons name="swap-horizontal" size={14} color={C.text} />
-        <Text style={s.switchText}>Try {COACHES[other].name}</Text>
-      </Pressable>
+      <View style={s.buttonRow}>
+        {!!onChat && (
+          <Pressable
+            onPress={onChat}
+            accessibilityRole="button"
+            accessibilityLabel={`Chat with ${COACHES[gender].name}`}
+            style={(p) => [s.switch, smooth, hovered(p) && { backgroundColor: C.card2, borderColor: C.text }, p.pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={14} color={C.text} />
+            <Text style={s.switchText}>Chat with {COACHES[gender].name}</Text>
+          </Pressable>
+        )}
+        <Pressable
+          onPress={() => setCoachStyle(other)}
+          accessibilityRole="button"
+          accessibilityLabel={`Switch coach to ${COACHES[other].name}`}
+          style={(p) => [s.switch, smooth, hovered(p) && { backgroundColor: C.card2, borderColor: C.text }, p.pressed && { opacity: 0.7 }]}
+        >
+          <Ionicons name="swap-horizontal" size={14} color={C.text} />
+          <Text style={s.switchText}>Try {COACHES[other].name}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -58,6 +73,7 @@ const s = StyleSheet.create({
   label: { color: C.soft, fontFamily: F.display, fontSize: 10, letterSpacing: 1.1, textTransform: 'uppercase' },
   title: { color: C.inverse, fontFamily: F.display, fontSize: 16, lineHeight: 20, letterSpacing: -0.4 },
   line: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 18 },
-  switch: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', borderWidth: 1, borderColor: C.borderStrong, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11 },
+  buttonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignSelf: 'flex-end' },
+  switch: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: C.borderStrong, borderRadius: 999, paddingVertical: 5, paddingHorizontal: 11 },
   switchText: { color: C.text, fontFamily: F.bodySemi, fontSize: 12 },
 });

@@ -5,25 +5,19 @@ import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
 import { Button, Eyebrow, H1, IconBadge, P, Row, Screen, Section } from '../../../src/components/ui';
-import { CoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
+import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
 import { useCoachStyle } from '../../../src/lib/coachStyle';
 import { refreshTodayNotifications } from '../../../src/lib/dailyNotifications';
 import { getExercise } from '../../../src/lib/exercises';
 import { groupColor, sessionGroups } from '../../../src/lib/groups';
 import { refreshAlarms } from '../../../src/lib/alarms';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
-import { computeTargets, totals } from '../../../src/lib/nutrition';
 import { refreshReminders } from '../../../src/lib/reminders';
-import { PlanSession, uid, WEEK_ORDER } from '../../../src/lib/planner';
+import { PlanSession, uid } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R, TYPE } from '../../../src/lib/theme';
-
-function isoOf(d: Date) {
-  const z = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
-}
 
 export default function DashboardScreen() {
   const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, water, sleep, weights } = useStore();
@@ -58,20 +52,6 @@ export default function DashboardScreen() {
   const loggedDates = useMemo(() => new Set(logs.map((l) => l.performed_on)), [logs]);
   const daySets = logs.filter((l) => l.performed_on === date).length;
 
-  // Date of each weekday in the current week (Monday first), to count workouts done.
-  const week = useMemo(() => {
-    const now = new Date();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    const dates: Record<number, string> = {};
-    WEEK_ORDER.forEach((d, i) => {
-      const x = new Date(monday);
-      x.setDate(monday.getDate() + i);
-      dates[d] = isoOf(x);
-    });
-    return dates;
-  }, [todayISO()]);
-
   async function addSession(day: number) {
     if (!plan) return;
     const existing = plan.data.days.find((d) => d.day === day);
@@ -94,35 +74,10 @@ export default function DashboardScreen() {
   }
 
   const planDays = plan.data.days;
-  const plannedDays = planDays.filter((d) => d.sessions.length > 0);
-  const weekPlanned = plannedDays.length;
-  const weekDone = plannedDays.filter((d) => loggedDates.has(week[d.day])).length;
-  // What the coach knows about how you are doing, so its lines can react to your progress.
-  const today = todayISO();
-  const now = new Date();
-  const targets = computeTargets(profile as any);
-  const eatenToday = foodEntries.filter((e) => e.eaten_on === today);
-  const eaten = totals(eatenToday);
-  const lastWorkout = [...loggedDates].sort().pop();
-  const kgs = weights.filter((w) => w.kg != null).map((w) => Number(w.kg));
-  const startKg = kgs[0] ?? (profile?.weight_kg ? Number(profile.weight_kg) : null);
-  const nowKg = kgs.length ? kgs[kgs.length - 1] : startKg;
-  const goalKg = profile?.target_weight_kg ? Number(profile.target_weight_kg) : null;
-  const hasGoal = startKg != null && nowKg != null && goalKg != null && startKg !== goalKg;
-  const coachContext: CoachContext = {
-    hour: now.getHours(),
-    weekday: now.getDay(),
-    weekDone,
-    weekPlanned,
-    totalWorkouts: loggedDates.size,
-    daysSinceLast: lastWorkout ? Math.round((new Date(`${today}T12:00:00`).getTime() - new Date(`${lastWorkout}T12:00:00`).getTime()) / 864e5) : null,
-    foodLogged: eatenToday.length > 0,
-    proteinPct: targets.ready && targets.protein ? eaten.protein / targets.protein : null,
-    waterPct: targets.water ? (water[today] ?? 0) / targets.water : null,
-    sleepMinutes: sleep.find((x) => x.night_of === today && x.minutes)?.minutes ?? null,
-    kgToward: hasGoal ? (startKg! - nowKg!) * (startKg! > goalKg! ? 1 : -1) : null,
-    goalPct: hasGoal ? Math.max(0, Math.min(1, (startKg! - nowKg!) / (startKg! - goalKg!))) : null,
-  };
+  // What the coach knows about how you are doing, so its lines can react to your progress; the same thing
+  // the AI coach chat asks the model with, built once here so both stay in sync.
+  const coachContext = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
+  const { weekDone, weekPlanned } = coachContext;
   const coach = coachMessage(planDays, loggedDates, seed, undefined, coachStyle, coachContext);
   const { streak } = trainingStreak(planDays, loggedDates);
   const sessions = planDays.find((d) => d.day === dow)?.sessions ?? [];
@@ -133,7 +88,7 @@ export default function DashboardScreen() {
   return (
     <Screen>
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>
-        <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} />
+        <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} onChat={() => router.push('/coach-chat')} />
       </Section>
 
       <Dashboard date={date} weekDone={weekDone} weekPlanned={weekPlanned} streak={streak} />

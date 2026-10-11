@@ -1,5 +1,7 @@
 // The dashboard's coach. Goku (male) pushes with insults and ego. Mirko (female) is soft spoken and motivating.
 import type { CoachStyle } from './coachStyle';
+import { computeTargets, totals } from './nutrition';
+import { WEEK_ORDER } from './planner';
 import { todayISO } from './progress';
 
 export type Tone = 'good' | 'bad' | 'neutral';
@@ -25,6 +27,60 @@ export type CoachContext = {
 
 const z = (n: number) => String(n).padStart(2, '0');
 const iso = (d: Date) => `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+
+/** Builds the same CoachContext the Dashboard works out for coachMessage(), from the store directly, so
+ *  anything else that wants to know how you are doing right now (the AI coach chat) does not re-derive this
+ *  by hand and risk drifting from what the Dashboard actually shows. */
+export function buildCoachContext(args: {
+  plan: { data: { days: PlanDay[] } } | null;
+  loggedDates: Set<string>;
+  profile: { weight_kg?: number | string | null; target_weight_kg?: number | string | null } | null;
+  foodEntries: { eaten_on: string }[];
+  water: Record<string, number>;
+  sleep: { night_of: string; minutes?: number | null }[];
+  weights: { day: string; kg: number | string | null }[];
+}): CoachContext {
+  const { plan, loggedDates, profile, foodEntries, water, sleep, weights } = args;
+  const today = todayISO();
+  const now = new Date();
+
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekDates: Record<number, string> = {};
+  WEEK_ORDER.forEach((d, i) => {
+    const x = new Date(monday);
+    x.setDate(monday.getDate() + i);
+    weekDates[d] = iso(x);
+  });
+  const plannedDays = plan ? plan.data.days.filter((d) => d.sessions.length > 0) : [];
+  const weekPlanned = plannedDays.length;
+  const weekDone = plannedDays.filter((d) => loggedDates.has(weekDates[d.day])).length;
+
+  const targets = computeTargets(profile as any);
+  const eatenToday = foodEntries.filter((e) => e.eaten_on === today);
+  const eaten = totals(eatenToday as any);
+  const lastWorkout = [...loggedDates].sort().pop();
+  const kgs = weights.filter((w) => w.kg != null).map((w) => Number(w.kg));
+  const startKg = kgs[0] ?? (profile?.weight_kg ? Number(profile.weight_kg) : null);
+  const nowKg = kgs.length ? kgs[kgs.length - 1] : startKg;
+  const goalKg = profile?.target_weight_kg ? Number(profile.target_weight_kg) : null;
+  const hasGoal = startKg != null && nowKg != null && goalKg != null && startKg !== goalKg;
+
+  return {
+    hour: now.getHours(),
+    weekday: now.getDay(),
+    weekDone,
+    weekPlanned,
+    totalWorkouts: loggedDates.size,
+    daysSinceLast: lastWorkout ? Math.round((new Date(`${today}T12:00:00`).getTime() - new Date(`${lastWorkout}T12:00:00`).getTime()) / 864e5) : null,
+    foodLogged: eatenToday.length > 0,
+    proteinPct: targets.ready && targets.protein ? eaten.protein / targets.protein : null,
+    waterPct: targets.water ? (water[today] ?? 0) / targets.water : null,
+    sleepMinutes: sleep.find((x) => x.night_of === today && x.minutes)?.minutes ?? null,
+    kgToward: hasGoal ? (startKg! - nowKg!) * (startKg! > goalKg! ? 1 : -1) : null,
+    goalPct: hasGoal ? Math.max(0, Math.min(1, (startKg! - nowKg!) / (startKg! - goalKg!))) : null,
+  };
+}
 function daysBack(from: string, n: number) {
   const d = new Date(`${from}T12:00:00`);
   d.setDate(d.getDate() - n);
