@@ -12,17 +12,18 @@ import { refreshTodayNotifications } from '../../../src/lib/dailyNotifications';
 import { getExercise } from '../../../src/lib/exercises';
 import { groupColor, sessionGroups } from '../../../src/lib/groups';
 import { refreshAlarms } from '../../../src/lib/alarms';
+import { checkGoalMilestone, checkStreakMilestone } from '../../../src/lib/milestones';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
 import { refreshReminders } from '../../../src/lib/reminders';
 import { PlanSession, uid } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
-import { currentStreak, loggedDaySet } from '../../../src/lib/streak';
+import { currentStreak, daysSinceLastLog, loggedDaySet } from '../../../src/lib/streak';
 import { A, C, F, R, TYPE } from '../../../src/lib/theme';
 
 export default function DashboardScreen() {
-  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, water, sleep, weights } = useStore();
+  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, progressPhotos, water, sleep, weights } = useStore();
   const router = useRouter();
   const [coachStyle] = useCoachStyle();
   const [quote, setQuote] = useState(() => randomQuote());
@@ -40,26 +41,48 @@ export default function DashboardScreen() {
   const loggedDays = useMemo(() => loggedDaySet({ foodEntries, logs, weights, sleep }), [foodEntries, logs, weights, sleep]);
   const dayStreak = currentStreak(loggedDays, todayStr);
   const loggedSomethingToday = loggedDays.has(todayStr);
+  const loggedDates = useMemo(() => new Set(logs.map((l) => l.performed_on)), [logs]);
+  // What the coach knows about how you are doing; the same thing the AI coach chat asks the model with, and
+  // (goalPct) the notification milestone check below, built once here so all three stay in sync. Tolerates
+  // plan being null (no plan built yet), unlike plan.data.days used further down, which needs the early
+  // return below first.
+  const coachContext = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
 
-  // Daily check ins and the "did you log today" nudges. No server behind these, so this just works out the
-  // next one each time the Dashboard is open and (re)schedules it; see src/lib/notify.ts for what that means
-  // on the web versus on the phone.
-  const todayLogged = useMemo(() => foodEntries.some((e) => e.eaten_on === todayISO()), [foodEntries]);
-  const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayISO()), [tasks]);
+  // Celebrates crossing a real milestone the moment it is seen, not on a schedule: see src/lib/milestones.ts.
+  useEffect(() => { checkStreakMilestone(dayStreak); }, [dayStreak]);
+  useEffect(() => {
+    checkGoalMilestone(coachContext.goalPct, profile?.target_weight_kg ? Number(profile.target_weight_kg) : null);
+  }, [coachContext.goalPct, profile?.target_weight_kg]);
+
+  // Daily check ins and all the "come back" nudges below. No server behind these, so this just works out the
+  // next one each time the Dashboard is open and (re)schedules it; see src/lib/dailyNotifications.ts and
+  // src/lib/notify.ts for what that means on the web versus on the phone.
+  const todayLogged = useMemo(() => foodEntries.some((e) => e.eaten_on === todayStr), [foodEntries, todayStr]);
+  const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayStr), [tasks, todayStr]);
   const todayUndone = todayTasks.filter((t) => !t.done).length;
+  const todayDow = new Date(`${todayStr}T12:00:00`).getDay();
+  const todaysPlannedSessions = plan ? plan.data.days.find((d) => d.day === todayDow)?.sessions ?? [] : [];
+  const weighInDays = useMemo(() => new Set(weights.filter((w) => w.kg != null).map((w) => w.day)), [weights]);
+  const photoDays = useMemo(() => new Set(progressPhotos.map((p) => p.day)), [progressPhotos]);
+  const daysSinceLastWeighIn = daysSinceLastLog(weighInDays, todayStr);
+  const daysSinceLastPhoto = daysSinceLastLog(photoDays, todayStr);
+  const daysSinceAnyLog = daysSinceLastLog(loggedDays, todayStr);
   useEffect(() => {
     initNotifications();
     requestNotifyPermission().then((ok) => {
       if (!ok) return;
-      refreshTodayNotifications(todayLogged, todayTasks, { days: dayStreak, loggedToday: loggedSomethingToday });
+      refreshTodayNotifications({
+        todayFoodLogged: todayLogged, tasksToday: todayTasks, streak: { days: dayStreak, loggedToday: loggedSomethingToday },
+        workout: { plannedToday: todaysPlannedSessions.length > 0, sessionTitle: todaysPlannedSessions[0]?.title ?? null, doneToday: loggedDates.has(todayStr) },
+        daysSinceLastWeighIn, waterPct: coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog,
+      });
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday]);
+  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();
-  const loggedDates = useMemo(() => new Set(logs.map((l) => l.performed_on)), [logs]);
   const daySets = logs.filter((l) => l.performed_on === date).length;
 
   async function addSession(day: number) {
@@ -84,9 +107,6 @@ export default function DashboardScreen() {
   }
 
   const planDays = plan.data.days;
-  // What the coach knows about how you are doing, so its lines can react to your progress; the same thing
-  // the AI coach chat asks the model with, built once here so both stay in sync.
-  const coachContext = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
   const { weekDone, weekPlanned } = coachContext;
   const coach = coachMessage(planDays, loggedDates, seed, undefined, coachStyle, coachContext);
   const { streak } = trainingStreak(planDays, loggedDates);

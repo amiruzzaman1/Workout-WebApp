@@ -6,13 +6,50 @@ import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { ConfirmHost } from '../src/components/ConfirmHost';
 import { Loading } from '../src/components/ui';
 import { AiRuntimeProvider } from '../src/lib/aiRuntime';
+import { ACTION, onNotificationAction } from '../src/lib/notify';
+import { todayISO } from '../src/lib/progress';
 import { StoreProvider, useStore } from '../src/lib/store';
 import { C, F } from '../src/lib/theme';
+
+/**
+ * Handles a tap on one of the action buttons a notification can have (src/lib/notify.ts's CATEGORY/ACTION),
+ * while the app is already running or one cold started it (onNotificationAction covers both). The quick
+ * water button genuinely logs it right away rather than just opening the Food tab, since that one button is
+ * the whole point: everything else just takes you to the right screen. A ref holds the latest store so the
+ * handler (set up once, not re-subscribed on every store change) never acts on stale water data.
+ */
+function NotificationActions() {
+  const router = useRouter();
+  const store = useStore();
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
+  useEffect(() => {
+    if (!store.ready) return;
+    return onNotificationAction((actionId) => {
+      const s = storeRef.current;
+      switch (actionId) {
+        case ACTION.addWater: {
+          const today = todayISO();
+          s.setWater(today, (s.water[today] ?? 0) + 250).catch(() => {});
+          router.push('/');
+          break;
+        }
+        case ACTION.openFood: router.push('/food/add'); break;
+        case ACTION.openWorkout: router.push('/'); break;
+        case ACTION.openWeight: router.push('/progress'); break;
+        case ACTION.openPhotos: router.push('/progress'); break;
+        case ACTION.openChat: router.push('/coach-chat'); break;
+      }
+    });
+  }, [store.ready]);
+  return null;
+}
 
 function Gate() {
   const { ready, session, profile } = useStore();
@@ -29,6 +66,7 @@ function Gate() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <NotificationActions />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: C.bg },

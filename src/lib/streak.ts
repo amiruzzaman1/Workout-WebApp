@@ -34,3 +34,13 @@ export function currentStreak(days: Set<string>, today: string): number {
   while (days.has(d)) { n++; d = shiftISO(d, -1); }
   return n;
 }
+
+/** How many days ago the most recent logged day was (0 means today), or null if nothing has ever been
+ *  logged. Used for the "we miss you" win back nudge, a different question from the streak itself: the
+ *  streak is already 0 the moment yesterday is skipped, this keeps counting for as long as the app stays
+ *  quiet so the nudge can say "it's been 4 days", not just "0". */
+export function daysSinceLastLog(days: Set<string>, today: string): number | null {
+  if (days.size === 0) return null;
+  const last = [...days].sort().pop()!;
+  return Math.round((new Date(`${today}T12:00:00`).getTime() - new Date(`${last}T12:00:00`).getTime()) / 864e5);
+}

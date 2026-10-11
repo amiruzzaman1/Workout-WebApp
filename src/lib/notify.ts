@@ -61,6 +61,57 @@ export async function initNotifications() {
       });
     }
   }
+  await setupActionCategories();
+}
+
+// ---------------- action buttons on a notification ----------------
+//
+// A button that only logs something (ACTIONS.addWater) still opens the app to the foreground: Android never
+// runs this app's JS to handle a button tap if the app was fully killed (not just backgrounded) and that
+// button is marked as not opening the app, so a true "stays closed, just logs it" button cannot be made
+// reliable here. Opening the app and then doing the action immediately (see consumeLastNotificationAction()
+// below, and where ai.tsx and the root layout call it) is the honest, working version of a one tap button.
+export const CATEGORY = {
+  logNudge: 'log-nudge', workoutNudge: 'workout-nudge', weighInNudge: 'weighin-nudge',
+  photoNudge: 'photo-nudge', coachNudge: 'coach-nudge',
+} as const;
+export const ACTION = {
+  addWater: 'add_water', openFood: 'open_food', openWorkout: 'open_workout',
+  openWeight: 'open_weight', openPhotos: 'open_photos', openChat: 'open_chat',
+} as const;
+
+async function setupActionCategories() {
+  await Notifications.setNotificationCategoryAsync(CATEGORY.logNudge, [
+    { identifier: ACTION.addWater, buttonTitle: '+250ml water' },
+    { identifier: ACTION.openFood, buttonTitle: 'Log food' },
+  ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.workoutNudge, [
+    { identifier: ACTION.openWorkout, buttonTitle: 'Start workout' },
+  ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.weighInNudge, [
+    { identifier: ACTION.openWeight, buttonTitle: 'Log weight' },
+  ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.photoNudge, [
+    { identifier: ACTION.openPhotos, buttonTitle: 'Add a photo' },
+  ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.coachNudge, [
+    { identifier: ACTION.openChat, buttonTitle: 'Ask my coach' },
+  ]);
+}
+
+/** Fires with the action identifier (one of ACTION's values) whenever a button is tapped while the app is
+ *  already running, and also once for whatever action launched the app this time (a cold start from tapping
+ *  a button), since the listener below only catches responses that happen after it is registered. Call once
+ *  near the top of the app, after initNotifications(). A plain tap on the notification body itself (not a
+ *  button) reports Notifications.DEFAULT_ACTION_IDENTIFIER, which this passes through too, your handler can
+ *  ignore it if it only cares about the buttons. */
+export function onNotificationAction(handler: (actionId: string) => void): () => void {
+  if (!isNative) return () => {};
+  Notifications.getLastNotificationResponseAsync().then((r: any) => {
+    if (r) handler(r.actionIdentifier);
+  }).catch(() => {});
+  const sub = Notifications.addNotificationResponseReceivedListener((r: any) => handler(r.actionIdentifier));
+  return () => sub.remove();
 }
 
 export type AlarmVibration = 'none' | 'short' | 'double' | 'long';
