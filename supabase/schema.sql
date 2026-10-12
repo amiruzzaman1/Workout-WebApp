@@ -432,3 +432,22 @@ drop policy if exists "progress photo own" on storage.objects;
 create policy "progress photo own" on storage.objects for all to authenticated
   using (bucket_id = 'progress_photos' and (storage.foldername(name))[1] = (select auth.uid())::text)
   with check (bucket_id = 'progress_photos' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- v18: Coach chat history (app/(tabs)/(home)/coach-chat.tsx). Saved per coach (male Goku, female Mirko) so
+-- swapping coaches never mixes their conversations; the recent messages are also fed back into the AI
+-- model's prompt (aiAssistant.ts's buildCoachPrompt) so it has the last few turns of context, the honest,
+-- on device version of "remembering the conversation", not model fine tuning.
+create table if not exists public.coach_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  coach text not null check (coach in ('male', 'female')),
+  role text not null check (role in ('user', 'coach')),
+  text text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists coach_messages_user_coach_idx on public.coach_messages (user_id, coach, created_at);
+alter table public.coach_messages enable row level security;
+drop policy if exists "own coach messages" on public.coach_messages;
+create policy "own coach messages" on public.coach_messages for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, delete on public.coach_messages to authenticated;

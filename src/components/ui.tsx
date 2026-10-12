@@ -91,7 +91,11 @@ export function IconBadge({ name, color, size = 40 }: { name: IconName; color: s
 export function Screen({ children, scroll = true, top = false }: { children: React.ReactNode; scroll?: boolean; top?: boolean }) {
   const insets = useSafeAreaInsets();
   const pad = top ? { paddingTop: insets.top + 24 } : null;
-  if (!scroll) return <View style={s.screen}><View style={[s.inner, pad]}>{children}</View></View>;
+  // The non-scrolling inner view needs flex:1 of its own so a flex:1 child (the chat screen's message list)
+  // has an actual height to expand into; s.inner alone only sizes to its content, which otherwise collapses
+  // a flex:1 ScrollView to zero height instead of hiding it off screen, so nothing looks wrong until you
+  // notice messages are simply never visible.
+  if (!scroll) return <View style={s.screen}><View style={[s.inner, pad, { flex: 1 }]}>{children}</View></View>;
   return (
     <ScrollView style={s.screen} contentContainerStyle={[s.inner, pad, { paddingBottom: 64 }]} keyboardShouldPersistTaps="handled">
       {children}

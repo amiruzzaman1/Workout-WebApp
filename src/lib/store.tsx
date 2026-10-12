@@ -7,6 +7,7 @@ import { Food, FoodEntry } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
 import { Recipe } from './recipes';
 import { Alarm } from './alarms';
+import { CoachMessage, CoachStyle } from './coachStyle';
 import { ProgressPhoto } from './photos';
 import { Reminder } from './reminders';
 import { ActivityLog, SleepLog, TaskItem, WeightLog } from './tracker';
@@ -74,6 +75,11 @@ type Store = {
   progressPhotos: ProgressPhoto[];
   addProgressPhoto: (uri: string, day: string, note?: string | null) => Promise<ProgressPhoto>;
   deleteProgressPhoto: (id: string) => Promise<void>;
+  /** Not preloaded at sign in (it only grows, unlike the small control tables above): coach-chat.tsx loads
+   *  it itself for whichever coach is open right now. */
+  coachMessages: CoachMessage[];
+  loadCoachMessages: (coach: CoachStyle) => Promise<void>;
+  addCoachMessage: (coach: CoachStyle, role: 'user' | 'coach', text: string) => Promise<CoachMessage>;
   /** Private bucket, so there is no public url; this signs however many ids are visible right now, good for an hour. */
   signProgressPhotos: (ids: string[]) => Promise<Record<string, string>>;
   savePlan: (data: PlanData) => Promise<void>;
@@ -188,6 +194,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -209,6 +216,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setAlarms([]);
       setProgressPhotos([]);
       setRecipes([]);
+      setCoachMessages([]);
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
@@ -586,6 +594,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (error) throw new Error(error.message);
   }, []);
 
+  const loadCoachMessages = useCallback(async (coach: CoachStyle) => {
+    const { data, error } = await supabase.from('coach_messages').select('id,coach,role,text,created_at')
+      .eq('coach', coach).order('created_at', { ascending: true }).limit(200);
+    if (error) throw new Error(error.message);
+    setCoachMessages((data ?? []) as CoachMessage[]);
+  }, []);
+
+  const addCoachMessage = useCallback(async (coach: CoachStyle, role: 'user' | 'coach', text: string) => {
+    const { data, error } = await supabase.from('coach_messages').insert({ coach, role, text }).select('id,coach,role,text,created_at').single();
+    if (error) throw new Error(error.message);
+    setCoachMessages((l) => [...l, data as CoachMessage]);
+    return data as CoachMessage;
+  }, []);
+
   const ALARM_COLS = 'id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled';
   const addAlarm = useCallback(async (row: Omit<Alarm, 'id'>) => {
     const { data, error } = await supabase.from('alarms').insert(row).select(ALARM_COLS).single();
@@ -676,6 +698,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
     sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, alarms, addAlarm, updateAlarm, deleteAlarm, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, uploadAvatar, removeAvatar, progressPhotos, addProgressPhoto, deleteProgressPhoto, signProgressPhotos, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
+    coachMessages, loadCoachMessages, addCoachMessage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

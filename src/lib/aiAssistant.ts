@@ -123,8 +123,14 @@ export function buildPrompt(transcript: string, ctx: VoiceContext): string {
 
 /** A free form question answered in character as your chosen coach (same two voices as coach.ts's scripted
  *  lines), grounded in your real progress. Plain text back, not the JSON contract above, since this is a
- *  conversation, not an action to carry out. */
-export function buildCoachPrompt(question: string, voice: CoachStyle, ctx: CoachContext): string {
+ *  conversation, not an action to carry out.
+ *
+ *  `history` is the realistic, on device version of "remembering the conversation": the last few turns, fed
+ *  back in as plain text so the model has context, not fine tuning (which cannot happen on a phone, same
+ *  honest limit as voiceDictionary.ts). Kept short (a handful of turns, each clipped) since maxTokens is the
+ *  model's whole session budget, prompt and reply together; see aiRuntime.android.tsx for how that limit was
+ *  already hit once before by a system prompt alone. */
+export function buildCoachPrompt(question: string, voice: CoachStyle, ctx: CoachContext, history: { role: 'user' | 'coach'; text: string }[] = []): string {
   const { name, blurb } = COACHES[voice];
   const stats = [
     `This week: ${ctx.weekDone} of ${ctx.weekPlanned} planned workouts done. Total workouts ever: ${ctx.totalWorkouts}.`,
@@ -135,14 +141,16 @@ export function buildCoachPrompt(question: string, voice: CoachStyle, ctx: Coach
     ctx.sleepMinutes != null ? `Slept last night: ${Math.round((ctx.sleepMinutes / 60) * 10) / 10} hours.` : null,
     ctx.goalPct != null ? `${Math.round(ctx.goalPct * 100)}% of the way to the weight goal.` : null,
   ].filter((l): l is string => !!l).join('\n');
+  const recent = history.slice(-6).map((m) => `${m.role === 'user' ? 'User' : name}: ${m.text.slice(0, 300)}`).join('\n');
   return [
     `You are ${name}, a gym coach inside a fitness app. ${blurb}`,
     'Answer the question in one short paragraph, fully in character, about effort and progress, never about body or identity, and with no dashes in your writing.',
     'Use the numbers below only where they are actually relevant to the question; never invent a number you were not given.',
     stats,
+    recent ? `Earlier in this conversation:\n${recent}` : null,
     `The user asks: "${question}"`,
     `${name}'s answer:`,
-  ].join('\n\n');
+  ].filter((l): l is string => !!l).join('\n\n');
 }
 
 /** Pulls out the first {...} block, since a small model sometimes wraps the JSON in a sentence despite being told not to. */

@@ -50,3 +50,6 @@ export const COACHES: Record<CoachStyle, { name: string; blurb: string }> = {
   male: { name: 'Goku', blurb: 'Ruthless. Insults you and bruises your ego so you push harder.' },
   female: { name: 'Mirko', blurb: 'Soft spoken and kind. Motivates you with care and belief.' },
 };
+
+/** One line of the Coach chat, saved per coach so swapping coaches does not mix their conversations. */
+export type CoachMessage = { id: string; coach: CoachStyle; role: 'user' | 'coach'; text: string; created_at: string };

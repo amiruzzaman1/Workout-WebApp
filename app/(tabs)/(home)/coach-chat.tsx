@@ -12,27 +12,35 @@ import { speak, stopSpeaking, useSpeakEnabled } from '../../../src/lib/speech';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
 
-type Msg = { role: 'user' | 'coach'; text: string };
-
 /**
  * Free form chat with your coach, in character, grounded in your real progress (buildCoachPrompt in
  * aiAssistant.ts). Separate from the voice command pipeline: nothing here is parsed into an action, it is
- * just conversation, so there is no confirm screen, nothing saves. Needs the AI model turned on (User
- * settings); the rule based word matching elsewhere in the app has no part in this screen.
+ * just conversation, so there is no confirm screen for it. Needs the AI model turned on (User settings); the
+ * rule based word matching elsewhere in the app has no part in this screen.
+ *
+ * Saved per coach (table coach_messages, schema v18, store.tsx's loadCoachMessages/addCoachMessage), so the
+ * conversation survives leaving the screen, and the last few turns are fed back into buildCoachPrompt so the
+ * model has context, the honest on device version of "remembering the conversation".
  */
 export default function CoachChat() {
   const router = useRouter();
-  const { plan, logs, profile, foodEntries, water, sleep, weights } = useStore();
+  const store = useStore();
+  const { plan, logs, profile, foodEntries, water, sleep, weights, coachMessages, loadCoachMessages, addCoachMessage } = store;
   const [coachStyle] = useCoachStyle();
   const ai = useAiRuntime();
   const [speakOn] = useSpeakEnabled();
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => stopSpeaking, []); // leaving the screen cuts off anything still being read out
+
+  useEffect(() => {
+    setHistoryLoaded(false);
+    loadCoachMessages(coachStyle).catch((e: any) => setError(e?.message ?? 'Could not load earlier chat.')).finally(() => setHistoryLoaded(true));
+  }, [coachStyle, loadCoachMessages]);
 
   const loggedDates = new Set(logs.map((l) => l.performed_on));
   const ctx = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
@@ -44,12 +52,13 @@ export default function CoachChat() {
     if (!q || thinking) return;
     setError(null);
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text: q }]);
     setThinking(true);
+    const history = coachMessages.map((m) => ({ role: m.role, text: m.text })); // the conversation so far, before this question
     try {
-      const raw = await ai.ask(buildCoachPrompt(q, coachStyle, ctx));
+      await addCoachMessage(coachStyle, 'user', q);
+      const raw = await ai.ask(buildCoachPrompt(q, coachStyle, ctx, history));
       const answer = raw.trim() || "Didn't quite land on an answer there, try asking again.";
-      setMessages((m) => [...m, { role: 'coach', text: answer }]);
+      await addCoachMessage(coachStyle, 'coach', answer);
       if (speakOn) speak(answer);
     } catch (e: any) {
       setError(e?.message ?? 'Could not reach the model. Try again.');
@@ -92,12 +101,12 @@ export default function CoachChat() {
       {ready && (
         <>
           <ScrollView ref={scrollRef} style={{ flex: 1, marginTop: 10 }} contentContainerStyle={{ gap: 10, paddingBottom: 10 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-            {messages.length === 0 && (
+            {historyLoaded && coachMessages.length === 0 && (
               <P muted style={{ fontSize: 13 }}>
                 Ask {name} anything about your training, food or motivation. It knows your streak, your goal progress, and today's numbers, but nothing else, so it can get things wrong; it is a small model.
               </P>
             )}
-            {messages.map((m, i) => <Bubble key={i} msg={m} />)}
+            {coachMessages.map((m) => <Bubble key={m.id} msg={m} />)}
             {thinking && (
               <Row style={{ gap: 8 }}>
                 <ActivityIndicator size="small" color={C.muted} />
@@ -117,7 +126,7 @@ export default function CoachChat() {
   );
 }
 
-function Bubble({ msg }: { msg: Msg }) {
+function Bubble({ msg }: { msg: { role: 'user' | 'coach'; text: string } }) {
   const mine = msg.role === 'user';
   return (
     <View style={[cs.bubble, mine ? cs.bubbleMine : cs.bubbleCoach]}>
