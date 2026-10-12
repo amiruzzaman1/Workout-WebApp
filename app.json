@@ -1,14 +1,18 @@
 {
   "expo": {
     "name": "Forge",
-    "slug": "workout-webapp",
+    "slug": "forge",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.amiruzzaman.forge"
+      "bundleIdentifier": "com.amiruzzaman.forge",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,7 +23,13 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.amiruzzaman.forge",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -48,13 +58,20 @@
       ],
       "expo-speech-recognition",
       "expo-llm-mediapipe",
-      "expo-file-system"
+      "expo-file-system",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Forge uses your camera to scan a food's barcode.",
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "scheme": "workout",
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2f1173fe-23f7-499a-badd-8a8670bde344"
+        "projectId": "d9da849d-6118-4731-aa28-846591e238b6"
       }
     }
   }

@@ -1,21 +1,26 @@
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { C, F, R } from '../lib/theme';
 import { Button, Input, P, Row } from './ui';
 
 /**
- * Barcode scanning on the web uses the browser's built-in BarcodeDetector.
- * Chrome on Android and desktop support it; Safari on iPhone does not, so
- * there you type the number under the barcode instead.
+ * Barcode scanning on the web uses the browser's built-in BarcodeDetector (Chrome on Android and desktop
+ * support it; Safari on iPhone does not, so there you type the number under the barcode instead). The
+ * Android and iOS apps use expo-camera's own native scanner instead, a real camera module, not a web API,
+ * so "supported" below only ever applies to the web branch; native always has a camera to try.
  */
 export function BarcodeScanner({ onCode, onCancel }: { onCode: (code: string) => void; onCancel: () => void }) {
-  const supported = Platform.OS === 'web' && typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;
+  const isWeb = Platform.OS === 'web';
+  const supported = isWeb && typeof window !== 'undefined' && 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;
+  const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [manual, setManual] = useState('');
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stop = useRef(() => {});
+  const scannedRef = useRef(false);
 
   useEffect(() => () => stop.current(), []);
 
@@ -63,23 +68,59 @@ export function BarcodeScanner({ onCode, onCancel }: { onCode: (code: string) =>
     }
   }
 
+  /** The native path: a real camera module (expo-camera), not a web API, so this works the same on Android
+   *  and iOS regardless of what the web branch above can or cannot do. */
+  async function startNative() {
+    setError(null);
+    scannedRef.current = false;
+    if (!permission?.granted) {
+      const res = await requestPermission();
+      if (!res.granted) { setError('Forge needs camera access to scan a barcode. Allow it in your phone settings, or type the number below.'); return; }
+    }
+    setScanning(true);
+  }
+
+  function onNativeBarcode(result: { data: string }) {
+    if (scannedRef.current) return;
+    const value = String(result.data || '').replace(/\D/g, '');
+    if (value.length >= 6) {
+      scannedRef.current = true;
+      setScanning(false);
+      onCode(value);
+    }
+  }
+
   return (
     <View style={{ gap: 12 }}>
-      {supported ? (
-        scanning ? (
-          <View style={st.viewport}>
-            {/* web-only element; ignored on native builds */}
-            {/* @ts-ignore */}
-            <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted autoPlay playsInline />
-            <View style={st.reticle} />
-          </View>
+      {isWeb ? (
+        supported ? (
+          scanning ? (
+            <View style={st.viewport}>
+              {/* web-only element; ignored on native builds */}
+              {/* @ts-ignore */}
+              <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted autoPlay playsInline />
+              <View style={st.reticle} />
+            </View>
+          ) : (
+            <Button title="Open camera and scan" onPress={start} />
+          )
         ) : (
-          <Button title="Open camera and scan" onPress={start} />
+          <P muted style={{ fontSize: 13 }}>
+            This browser can't use the camera for barcodes (iPhone Safari doesn't support it yet). Type the number printed under the barcode.
+          </P>
         )
+      ) : scanning ? (
+        <View style={st.viewport}>
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128'] }}
+            onBarcodeScanned={onNativeBarcode}
+          />
+          <View style={st.reticle} />
+        </View>
       ) : (
-        <P muted style={{ fontSize: 13 }}>
-          This browser can't use the camera for barcodes (iPhone Safari doesn't support it yet). Type the number printed under the barcode.
-        </P>
+        <Button title="Open camera and scan" onPress={startNative} />
       )}
       {error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
 
