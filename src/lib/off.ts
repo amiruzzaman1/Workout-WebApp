@@ -86,8 +86,26 @@ async function classicSearch(q: string, nzOnly: boolean): Promise<Hit[]> {
 }
 
 /** The newer search service is quick and matches any one word, so it is how a search that came up short gets a second chance. */
-async function modernSearch(q: string): Promise<Hit[]> {
-  const j = await getJSON(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=25&fields=${FIELDS}`);
+async function modernSearch(q: string, nzOnly = false): Promise<Hit[]> {
+  const query = nzOnly ? `${q} countries_tags:"en:new-zealand"` : q;
+  const j = await getJSON(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(query)}&page_size=40&fields=${FIELDS}`);
+  const out: Hit[] = [];
+  for (const h of j?.hits ?? []) {
+    const f = fromOFF(h);
+    if (f) out.push(hitOf(h, f));
+  }
+  return out;
+}
+
+/** Everything under one brand ("collective" lists The Collective's whole range). Uses the newer service's brand filter, which the classic search has no equivalent of, and asks for up to 50 so a whole range fits. */
+async function brandSearch(brand: string, nzOnly: boolean): Promise<Hit[]> {
+  const b = brand.replace(/["():*]/g, ' ').trim();
+  // The last word is still being typed, so it matches as a prefix: "collec" finds The Collective.
+  const parts = b.split(/\s+/);
+  const last = parts.pop() ?? '';
+  const phrase = parts.length ? `(${parts.map((p) => `brands:${p}`).join(' AND ')} AND brands:${last}*)` : `${last}*`;
+  const q = parts.length ? `${phrase}${nzOnly ? ' countries_tags:"en:new-zealand"' : ''}` : `brands:${phrase}${nzOnly ? ' countries_tags:"en:new-zealand"' : ''}`;
+  const j = await getJSON(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=50&fields=${FIELDS}`);
   const out: Hit[] = [];
   for (const h of j?.hits ?? []) {
     const f = fromOFF(h);
@@ -105,26 +123,43 @@ export async function searchFoods(term: string, nzFirst = true): Promise<Food[]>
 
   const exact: Food[] = [];
   const near: Food[] = [];
+  const byBrand: Food[] = []; // the typed words are the product's brand: what you typed is a brand, so its range comes first
   const add = (hits: Hit[]) => {
     for (const { f, hay } of hits) {
-      if (!(f.kcal_100 > 0) || exact.some((o) => same(o, f)) || near.some((o) => same(o, f))) continue;
+      if (!(f.kcal_100 > 0) || [...byBrand, ...exact, ...near].some((o) => same(o, f))) continue;
       const matched = words.filter((w) => hay.includes(w)).length;
-      if (matched === words.length) exact.push(f);
+      const brandHay = norm(f.brand ?? '');
+      if (matched === words.length && words.every((w) => brandHay.includes(w))) byBrand.push(f);
+      else if (matched === words.length) exact.push(f);
       else if (words.length >= 3 && matched >= words.length - 1) near.push(f);
     }
   };
 
   let lastErr: unknown = null;
   let answered = 0; // sources that replied, even with nothing useful
-  try { add(await classicSearch(q, true)); answered++; } catch (e) { lastErr = e; }
-  if (exact.length < 5) {
+  // One or two words is often a brand ("collective", "pams"): list that brand's range, sold in NZ first.
+  if (words.length <= 2) {
+    try {
+      add(await brandSearch(words.join(' '), true));
+      if (byBrand.length < 8) add(await brandSearch(words.join(' '), false));
+      answered++;
+    } catch (e) { lastErr = e; }
+  }
+  // Open Food Facts allows roughly 10 searches a minute, so once a brand search has filled the list, stop there.
+  if (byBrand.length < 8) {
+    try { add(await classicSearch(q, true)); answered++; } catch (e) { lastErr = e; }
+  }
+  if (byBrand.length + exact.length < 5) {
     try { add(await classicSearch(q, false)); answered++; } catch (e) { lastErr = e; }
   }
   // The quick service backs up the classic one when it is down or came up short.
-  if (answered === 0 || exact.length < 5) {
-    try { add(await modernSearch(q)); answered++; } catch (e) { lastErr = e; }
+  if (byBrand.length + exact.length < 5 || answered === 0) {
+    try { add(await modernSearch(q, true)); answered++; } catch (e) { lastErr = e; }
+    if (byBrand.length + exact.length < 5) {
+      try { add(await modernSearch(q)); answered++; } catch (e) { lastErr = e; }
+    }
   }
   if (answered === 0 && lastErr) throw lastErr;
   const order = (list: Food[]) => (nzFirst ? [...list.filter((f: any) => f._nz), ...list.filter((f: any) => !f._nz)] : list);
-  return [...order(exact), ...(exact.length < 5 ? order(near) : [])];
+  return [...order(byBrand), ...order(exact), ...(byBrand.length + exact.length < 5 ? order(near) : [])];
 }
