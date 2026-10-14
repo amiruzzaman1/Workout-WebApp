@@ -6,7 +6,7 @@ import { buildPrompt, resolveLlmOutput } from '../lib/aiAssistant';
 import { useAiRuntime } from '../lib/aiRuntime';
 import { confirm as confirmDialog } from '../lib/confirm';
 import { EXERCISES } from '../lib/exercises';
-import { entryToFood, MEAL_LABELS, round, scaleFood } from '../lib/nutrition';
+import { entryToFood, fmtEnergy, MEAL_LABELS, round, scaleFood } from '../lib/nutrition';
 import { recipeToFood } from '../lib/recipes';
 import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
@@ -403,7 +403,7 @@ function IntentBody({ intent, fromAi }: { intent: VoiceIntent; fromAi: boolean }
         <>
           <Ionicons name="trash-outline" size={28} color={A.over} />
           <Text style={s.title}>Delete: {intent.entry.name}</Text>
-          <Text style={s.hint}>{MEAL_LABELS[intent.entry.meal]} · {intent.entry.kcal} kcal</Text>
+          <Text style={s.hint}>{MEAL_LABELS[intent.entry.meal]} · {fmtEnergy(intent.entry.kcal)}</Text>
         </>
       )}
       {intent.kind === 'log_weight' && (
@@ -473,7 +473,7 @@ function IntentBody({ intent, fromAi }: { intent: VoiceIntent; fromAi: boolean }
         <>
           <Ionicons name="nutrition" size={28} color={A.carbs} />
           <Text style={s.title}>{intent.food.name}</Text>
-          <Text style={s.hint}>{round(intent.amount, 1)} {intent.unit} · {MEAL_LABELS[intent.meal]} · {scaleFood(intent.food, intent.amount).kcal} kcal</Text>
+          <Text style={s.hint}>{round(intent.amount, 1)} {intent.unit} · {MEAL_LABELS[intent.meal]} · {fmtEnergy(scaleFood(intent.food, intent.amount).kcal)}</Text>
           {!!intent.note && <Text style={s.note}>{intent.note}</Text>}
         </>
       )}

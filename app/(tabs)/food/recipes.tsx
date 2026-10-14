@@ -3,7 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Eyebrow, H1, hovered, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { confirm } from '../../../src/lib/confirm';
-import { round } from '../../../src/lib/nutrition';
+import { fmtEnergy, round } from '../../../src/lib/nutrition';
 import { Recipe, totalsOf } from '../../../src/lib/recipes';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
@@ -34,7 +34,7 @@ export default function Recipes() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={s.name} numberOfLines={2}>{r.name}</Text>
                 <Text style={s.meta} numberOfLines={1}>
-                  {Math.round(t.kcal / sv)} kcal{sv !== 1 ? ' per serving' : ''} · P {round(t.protein / sv, 0)} C {round(t.carbs / sv, 0)} F {round(t.fat / sv, 0)}
+                  {fmtEnergy(t.kcal / sv)}{sv !== 1 ? ' per serving' : ''} · P {round(t.protein / sv, 0)} C {round(t.carbs / sv, 0)} F {round(t.fat / sv, 0)}
                 </Text>
                 <Text style={s.meta} numberOfLines={1}>{r.items.length} ingredient{r.items.length === 1 ? '' : 's'}{sv !== 1 ? ` · makes ${round(sv, 2)} servings` : ''}</Text>
               </View>

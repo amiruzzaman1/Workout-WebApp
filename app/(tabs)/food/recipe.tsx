@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Button, Chip, Eyebrow, H1, hovered, Input, Label, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { confirm } from '../../../src/lib/confirm';
 import { libToFood, searchLibrary } from '../../../src/lib/foodData';
-import { entryToFood, Food, round } from '../../../src/lib/nutrition';
+import { entryToFood, fmtEnergy, Food, round, toKJ } from '../../../src/lib/nutrition';
 import { searchFoods } from '../../../src/lib/off';
 import { foodToItem, gramsOf, itemKcal, Recipe, RecipeItem, RecipeUnit, totalsOf, UNIT_LABEL, unitsFor } from '../../../src/lib/recipes';
 import { useStore } from '../../../src/lib/store';
@@ -33,7 +33,7 @@ function AmountStep({ name, item, onDone, onCancel, doneLabel }: {
       </Row>
       <Input value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={unit === 'tbsp' ? 'e.g. 2' : 'amount'} autoFocus accessibilityLabel="Amount" style={{ marginTop: 8 }} />
       <Text style={s.meta}>
-        {g > 0 ? `${Math.round(item.n.k * k)} kcal · P ${round(item.n.p * k, 1)} C ${round(item.n.c * k, 1)} F ${round(item.n.f * k, 1)}${unit !== 'g' ? ` · about ${round(g, g < 10 ? 1 : 0)} g` : ''}` : 'Type an amount'}
+        {g > 0 ? `${fmtEnergy(item.n.k * k)} · P ${round(item.n.p * k, 1)} C ${round(item.n.c * k, 1)} F ${round(item.n.f * k, 1)}${unit !== 'g' ? ` · about ${round(g, g < 10 ? 1 : 0)} g` : ''}` : 'Type an amount'}
       </Text>
       <Row style={{ gap: 8, marginTop: 10 }}>
         <Button small icon="checkmark" title={doneLabel} onPress={() => num(amount) > 0 && onDone(num(amount), unit)} disabled={!(num(amount) > 0)} />
@@ -95,7 +95,7 @@ function IngredientSearch({ onPick }: { onPick: (f: Food) => void }) {
         <Pressable key={f.name + i} onPress={() => onPick(f)} accessibilityRole="button" style={(p) => [s.pick, smooth, (p.pressed || hovered(p)) && { backgroundColor: C.card2 }]}>
           <View style={{ flex: 1 }}>
             <Text style={s.pickName} numberOfLines={2}>{f.name}</Text>
-            <Text style={s.meta} numberOfLines={1}>{f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal / {f.unit === 'piece' ? 'piece' : `100 ${f.unit ?? 'g'}`}</Text>
+            <Text style={s.meta} numberOfLines={1}>{f.brand ? `${f.brand} · ` : ''}{fmtEnergy(f.kcal_100)} / {f.unit === 'piece' ? 'piece' : `100 ${f.unit ?? 'g'}`}</Text>
           </View>
           <Ionicons name="add-circle-outline" size={20} color={C.muted} />
         </Pressable>
@@ -201,7 +201,7 @@ export default function RecipeScreen() {
         <P muted style={{ fontSize: 12, marginTop: 4 }}>With a cooked weight you can log it by grams as well as by serving. Without one you log it by serving.</P>
       </View>
 
-      <Section title="Ingredients" icon="list" color={A.carbs} right={<Text style={s.meta}>{items.length ? `${Math.round(t.kcal)} kcal in total` : ''}</Text>}>
+      <Section title="Ingredients" icon="list" color={A.carbs} right={<Text style={s.meta}>{items.length ? `${fmtEnergy(t.kcal)} in total` : ''}</Text>}>
         <View>
           {items.map((it, i) => (
             editing === i ? (
@@ -214,7 +214,7 @@ export default function RecipeScreen() {
               <View key={i} style={s.row}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.itemName} numberOfLines={2}>{it.name}</Text>
-                  <Text style={s.meta} numberOfLines={1}>{round(it.amount, 2)} {UNIT_LABEL[it.unit]}  · {itemKcal(it)} kcal</Text>
+                  <Text style={s.meta} numberOfLines={1}>{round(it.amount, 2)} {UNIT_LABEL[it.unit]}  · {fmtEnergy(itemKcal(it))}</Text>
                 </View>
                 <Pressable onPress={() => setEditing(i)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Edit ${it.name}`} style={(p) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: A.carbs + '22' }]}>
                   {(p: any) => <Ionicons name="create-outline" size={17} color={hovered(p) ? A.carbs : C.faint} />}
@@ -247,7 +247,7 @@ export default function RecipeScreen() {
       {items.length > 0 && (
         <Section title={sv === 1 ? 'Nutrition' : 'Nutrition per serving'} icon="nutrition" color={A.up}>
           <View style={s.totals}>
-            <Text style={s.big}>{Math.round(t.kcal / sv)}<Text style={s.unit}> kcal</Text></Text>
+            <Text style={s.big}>{Math.round(t.kcal / sv)}<Text style={s.unit}> kcal ({toKJ(t.kcal / sv)} kJ)</Text></Text>
             <Row style={{ gap: 10, marginTop: 6 }}>
               <Stat label="Protein" v={`${round(t.protein / sv, 1)} g`} />
               <Stat label="Carbs" v={`${round(t.carbs / sv, 1)} g`} />
@@ -259,7 +259,7 @@ export default function RecipeScreen() {
               {per(t.fibre) != null && <Stat label="Fibre" v={`${round(per(t.fibre)!, 1)} g`} small />}
               {per(t.sodium) != null && <Stat label="Sodium" v={`${Math.round(per(t.sodium)!)} mg`} small />}
             </Row>
-            {sv !== 1 && <Text style={[s.meta, { marginTop: 10 }]}>Whole recipe: {Math.round(t.kcal)} kcal, {round(t.protein, 0)} g protein, {round(t.carbs, 0)} g carbs, {round(t.fat, 0)} g fat, {Math.round(t.grams)} g of ingredients.</Text>}
+            {sv !== 1 && <Text style={[s.meta, { marginTop: 10 }]}>Whole recipe: {fmtEnergy(t.kcal)}, {round(t.protein, 0)} g protein, {round(t.carbs, 0)} g carbs, {round(t.fat, 0)} g fat, {Math.round(t.grams)} g of ingredients.</Text>}
             <Text style={[s.meta, { marginTop: 6 }]}>Worked out from the amounts above. Cooking oil left in the pan and water lost while cooking are not counted.</Text>
           </View>
         </Section>

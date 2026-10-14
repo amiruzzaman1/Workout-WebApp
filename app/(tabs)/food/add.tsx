@@ -7,7 +7,7 @@ import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { libToFood, searchLibrary } from '../../../src/lib/foodData';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, entryToFood, fmtAmount, Food, FoodMeasure, KJ_PER_KCAL, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood, toKJ } from '../../../src/lib/nutrition';
+import { computeTargets, entryToFood, fmtAmount, fmtEnergy, Food, FoodMeasure, KJ_PER_KCAL, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood, toKJ } from '../../../src/lib/nutrition';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
 import { foodToItem, recipeToFood } from '../../../src/lib/recipes';
@@ -367,7 +367,7 @@ function FoodList({ foods, onPick }: { foods: Food[]; onPick: (f: Food) => void 
           <View style={{ flex: 1 }}>
             <Text style={st.rowTitle} numberOfLines={2}>{f.name}</Text>
             <Text style={st.meta} numberOfLines={1}>
-              {f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal ({toKJ(f.kcal_100)} kJ) {f.unit === 'piece' ? `/ ${f.serving_label || 'piece'}` : `/ 100 ${f.unit ?? 'g'}`} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
+              {f.brand ? `${f.brand} · ` : ''}{fmtEnergy(f.kcal_100)} {f.unit === 'piece' ? `/ ${f.serving_label || 'piece'}` : `/ 100 ${f.unit ?? 'g'}`} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
             </Text>
             {!!f.shared && (
               <Text style={[st.who, { color: f.shared.by === 'you' ? C.muted : A.carbs }]}>{sharedLabel(f)}</Text>
@@ -696,9 +696,8 @@ function Portion({
       {food.serving_label && !isPiece && <P muted style={{ fontSize: 12 }}>Label serving: {food.serving_label}</P>}
 
       <View style={st.macros}>
-        <Big label="Calories" value={`${m.kcal}`} unit="kcal" />
-        <Text style={st.kjLine}>{toKJ(m.kcal)} kJ for this amount</Text>
-        <Text style={st.kjLine}>{isPiece ? 'One piece' : `Per 100 ${unit}`}: {Math.round(food.kcal_100)} kcal · {toKJ(food.kcal_100)} kJ</Text>
+        <Big label="Calories" value={`${m.kcal}`} unit={`kcal (${toKJ(m.kcal)} kJ)`} />
+        <Text style={st.kjLine}>{isPiece ? 'One piece' : `Per 100 ${unit}`}: {fmtEnergy(food.kcal_100)}</Text>
         <Row style={{ gap: 10, marginTop: 4 }}>
           <Big small label="Protein" value={`${m.protein_g}`} unit="g" />
           <Big small label="Carbs" value={`${m.carbs_g}`} unit="g" />

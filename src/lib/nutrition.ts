@@ -289,6 +289,8 @@ export type Food = {
 /** Most NZ labels list energy in kJ first; 1 kcal is 4.184 kJ. Shown next to kcal for cross checking against a label. */
 export const KJ_PER_KCAL = 4.184;
 export const toKJ = (kcal: number) => Math.round((Number(kcal) || 0) * KJ_PER_KCAL);
+/** How a food's energy is always written: "105 kcal (439 kJ)". Use this instead of printing kcal alone. */
+export const fmtEnergy = (kcal: number) => `${Math.round(Number(kcal) || 0)} kcal (${toKJ(kcal)} kJ)`;
 
 /** A measure you defined yourself for a food, e.g. 1 teaspoon of yoghurt = 3 g. `amount` is in the food's own unit (g or ml) for one. */
 export type FoodMeasure = { id: string; label: string; amount: number };
