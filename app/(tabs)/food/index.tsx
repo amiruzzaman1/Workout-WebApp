@@ -6,7 +6,7 @@ import { dayLabel } from '../../../src/components/AppHeader';
 import { NutrientMini } from '../../../src/components/NutrientMini';
 import { Button, Card, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, Section, smooth, usePageWidth, useTip } from '../../../src/components/ui';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, fmtAmount, FoodEntry, MEAL_LABELS, MEALS, round, totals } from '../../../src/lib/nutrition';
+import { computeTargets, fmtAmount, FoodEntry, MEAL_LABELS, MEALS, round, toKJ, totals } from '../../../src/lib/nutrition';
 import { todayISO } from '../../../src/lib/progress';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
@@ -47,6 +47,7 @@ export default function FoodScreen() {
               ? `${Math.round((t.kcal ?? 0) - sum.kcal)} kcal left`
               : `${Math.round(sum.kcal - (t.kcal ?? 0))} kcal over`}
           </P>
+          <Text style={st.meta}>{toKJ(sum.kcal)} kJ eaten of {toKJ(t.kcal ?? 0)} kJ</Text>
 
           <Row style={{ gap: 10, marginTop: 14, alignItems: 'flex-start' }}>
             <Macro label="Protein" value={sum.protein} target={t.protein!} color={A.protein} />
@@ -101,7 +102,7 @@ export default function FoodScreen() {
         const items = dayEntries.filter((e) => e.meal === meal);
         const mt = totals(items);
         return (
-          <Section key={meal} title={MEAL_LABELS[meal]} icon={MEAL_STYLE[meal].icon} color={MEAL_STYLE[meal].color} right={<Text style={st.meta}>{Math.round(mt.kcal)} kcal</Text>}>
+          <Section key={meal} title={MEAL_LABELS[meal]} icon={MEAL_STYLE[meal].icon} color={MEAL_STYLE[meal].color} right={<Text style={st.meta}>{Math.round(mt.kcal)} kcal · {toKJ(mt.kcal)} kJ</Text>}>
             {items.length > 0 && (
               <Row wrap style={{ gap: 8, marginBottom: 2 }}>
                 <Text style={st.summary} numberOfLines={1}>
@@ -159,7 +160,10 @@ function EntryRow({ e, onPress, onDelete }: { e: FoodEntry; onPress: () => void;
           {' · '}P {round(e.protein_g)} C {round(e.carbs_g)} F {round(e.fat_g)}
         </Text>
       </Pressable>
-      <Text style={st.kcal}>{Math.round(e.kcal)}</Text>
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={st.kcal}>{Math.round(e.kcal)}</Text>
+        <Text style={st.kj}>{toKJ(e.kcal)} kJ</Text>
+      </View>
       <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${e.name}`} style={(p) => [{ padding: 6, borderRadius: 999 }, smooth, hovered(p) && { backgroundColor: A.over + '22' }]}>
         {(p: any) => <Ionicons name="trash-outline" size={17} color={hovered(p) ? A.over : C.faint} />}
       </Pressable>
@@ -208,6 +212,7 @@ const st = StyleSheet.create({
   entry: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
   entryName: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   kcal: { color: C.text, fontFamily: F.displayMed, fontSize: 15 },
+  kj: { color: C.muted, fontFamily: F.body, fontSize: 11 },
   glass: { width: 26, height: 34, borderRadius: 4, borderWidth: 1, borderColor: C.borderStrong },
   dot: { width: 8, height: 8, borderRadius: 2 },
   summary: { flex: 1, minWidth: 120, color: C.muted, fontFamily: F.body, fontSize: 12 },

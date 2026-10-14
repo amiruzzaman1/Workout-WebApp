@@ -7,7 +7,7 @@ import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { libToFood, searchLibrary } from '../../../src/lib/foodData';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, entryToFood, fmtAmount, Food, FoodMeasure, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood } from '../../../src/lib/nutrition';
+import { computeTargets, entryToFood, fmtAmount, Food, FoodMeasure, KJ_PER_KCAL, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood, toKJ } from '../../../src/lib/nutrition';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
 import { foodToItem, recipeToFood } from '../../../src/lib/recipes';
@@ -367,7 +367,7 @@ function FoodList({ foods, onPick }: { foods: Food[]; onPick: (f: Food) => void 
           <View style={{ flex: 1 }}>
             <Text style={st.rowTitle} numberOfLines={2}>{f.name}</Text>
             <Text style={st.meta} numberOfLines={1}>
-              {f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal {f.unit === 'piece' ? `/ ${f.serving_label || 'piece'}` : `/ 100 ${f.unit ?? 'g'}`} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
+              {f.brand ? `${f.brand} · ` : ''}{Math.round(f.kcal_100)} kcal ({toKJ(f.kcal_100)} kJ) {f.unit === 'piece' ? `/ ${f.serving_label || 'piece'}` : `/ 100 ${f.unit ?? 'g'}`} · P {round(f.protein_100)} C {round(f.carbs_100)} F {round(f.fat_100)}
             </Text>
             {!!f.shared && (
               <Text style={[st.who, { color: f.shared.by === 'you' ? C.muted : A.carbs }]}>{sharedLabel(f)}</Text>
@@ -398,9 +398,18 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
   const [showMore, setShowMore] = useState(!!(initial?.fibre_100 || initial?.sodium_100));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [energyUnit, setEnergyUnit] = useState<'kcal' | 'kJ'>('kcal');
   const set = (k: keyof typeof v) => (t: string) => setV((x) => ({ ...x, [k]: t }));
   const num = (s: string) => Number(s.replace(',', '.')) || 0;
   const numOrNull = (s: string) => (s.trim() ? num(s) : null);
+  /** Switching between kcal and kJ converts what is already typed, so 436 kJ becomes about 104 kcal and back. */
+  function changeEnergyUnit(next: 'kcal' | 'kJ') {
+    if (next === energyUnit) return;
+    const cur = num(v.kcal);
+    if (v.kcal.trim()) setV((x) => ({ ...x, kcal: String(Math.round((next === 'kJ' ? cur * KJ_PER_KCAL : cur / KJ_PER_KCAL) * 10) / 10) }));
+    setEnergyUnit(next);
+  }
+  const energyKcal = energyUnit === 'kJ' ? num(v.kcal) / KJ_PER_KCAL : num(v.kcal);
 
   async function submit() {
     const isPiece = basis === 'piece';
@@ -412,7 +421,7 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
     const pieceLabel = v.pieceLabel.trim();
     const food: Food = {
       name: v.name.trim() || 'My food', brand: v.brand.trim() || null, barcode: initial?.barcode ?? initialBarcode ?? null,
-      kcal_100: num(v.kcal) * k, protein_100: num(v.p) * k, carbs_100: num(v.c) * k, fat_100: num(v.f) * k,
+      kcal_100: energyKcal * k, protein_100: num(v.p) * k, carbs_100: num(v.c) * k, fat_100: num(v.f) * k,
       sugars_100: numOrNull(v.sugars) == null ? null : numOrNull(v.sugars)! * k,
       sat_fat_100: numOrNull(v.satFat) == null ? null : numOrNull(v.satFat)! * k,
       fibre_100: numOrNull(v.fibre) == null ? null : numOrNull(v.fibre)! * k,
@@ -469,8 +478,13 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
         </>
       )}
 
+      <Label>Energy on the label</Label>
       <Row style={{ gap: 8 }}>
-        <View style={{ flex: 1, minWidth: 0 }}><Label>Calories</Label><Input value={v.kcal} onChangeText={set('kcal')} keyboardType="decimal-pad" placeholder="kcal" /></View>
+        <View style={{ flex: 1, minWidth: 0 }}><Input value={v.kcal} onChangeText={set('kcal')} keyboardType="decimal-pad" placeholder={energyUnit} accessibilityLabel={`Energy in ${energyUnit}`} /></View>
+        <View style={{ width: 130 }}><Seg value={energyUnit} onChange={changeEnergyUnit} options={[['kcal', 'kcal'], ['kJ', 'kJ']]} /></View>
+      </Row>
+      {!!v.kcal.trim() && <P muted style={{ fontSize: 12 }}>{energyUnit === 'kJ' ? `About ${Math.round(energyKcal)} kcal` : `${toKJ(energyKcal)} kJ`}. Most NZ labels list kJ first.</P>}
+      <Row style={{ gap: 8 }}>
         <View style={{ flex: 1, minWidth: 0 }}><Label>Protein g</Label><Input value={v.p} onChangeText={set('p')} keyboardType="decimal-pad" /></View>
       </Row>
       <Row style={{ gap: 8, alignItems: 'flex-start' }}>
@@ -683,6 +697,8 @@ function Portion({
 
       <View style={st.macros}>
         <Big label="Calories" value={`${m.kcal}`} unit="kcal" />
+        <Text style={st.kjLine}>{toKJ(m.kcal)} kJ for this amount</Text>
+        <Text style={st.kjLine}>{isPiece ? 'One piece' : `Per 100 ${unit}`}: {Math.round(food.kcal_100)} kcal · {toKJ(food.kcal_100)} kJ</Text>
         <Row style={{ gap: 10, marginTop: 4 }}>
           <Big small label="Protein" value={`${m.protein_g}`} unit="g" />
           <Big small label="Carbs" value={`${m.carbs_g}`} unit="g" />
@@ -792,6 +808,7 @@ const st = StyleSheet.create({
   panel: { paddingTop: 4 },
   who: { alignSelf: 'flex-end', fontFamily: F.bodyMed, fontSize: 11, marginTop: 2 },
   measureBox: { borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, padding: 12, gap: 2, backgroundColor: C.card },
+  kjLine: { color: C.muted, fontFamily: F.bodyMed, fontSize: 12 },
   measureSum: { color: C.muted, fontFamily: F.bodyMed, fontSize: 13, marginTop: 2 },
   warn: { borderWidth: 1, borderColor: A.carbs, borderRadius: R.md, padding: 12, gap: 6, backgroundColor: C.card },
   warnTitle: { color: A.carbs, fontFamily: F.bodySemi, fontSize: 14 },

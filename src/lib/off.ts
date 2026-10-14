@@ -10,14 +10,17 @@ const num = (v: any): number | null => {
 function fromOFF(p: any): Food | null {
   if (!p) return null;
   const nut = p.nutriments ?? {};
-  const kcal = num(nut['energy-kcal_100g']) ?? (num(nut['energy_100g']) != null ? Math.round(num(nut['energy_100g'])! / 4.184) : null);
+  // Many NZ labels only list kJ. Kept to one decimal so converting back to kJ for the cross check stays close to the label.
+  const kj = num(nut['energy_100g']) ?? num(nut['energy-kj_100g']);
+  const kcal = num(nut['energy-kcal_100g']) ?? (kj != null ? Math.round((kj / 4.184) * 10) / 10 : null);
   const name = (p.product_name_en || p.product_name || '').trim();
   if (!name && kcal == null) return null;
   const sodiumMg = num(nut.sodium_100g) != null ? num(nut.sodium_100g)! * 1000 : num(nut.salt_100g) != null ? (num(nut.salt_100g)! * 1000) / 2.5 : null;
   const servingG = num(p.serving_quantity);
   return {
     name: name || 'Unnamed product',
-    brand: (p.brands || '').split(',')[0]?.trim() || null,
+    // The classic service sends brands as "A,B", the newer search sends a list.
+    brand: (Array.isArray(p.brands) ? String(p.brands[0] ?? '') : String(p.brands || '').split(',')[0]).trim() || null,
     barcode: p.code ?? null,
     kcal_100: kcal ?? 0,
     protein_100: num(nut.proteins_100g) ?? 0,
@@ -34,7 +37,7 @@ function fromOFF(p: any): Food | null {
   };
 }
 
-const FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,serving_quantity,nutriments,countries_tags';
+const FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,serving_quantity,nutriments,countries_tags,generic_name,categories';
 
 async function getJSON(url: string, timeoutMs = 12000) {
   const ctrl = new AbortController();
@@ -59,63 +62,69 @@ export async function lookupBarcode(barcode: string): Promise<Food | null> {
 }
 
 // Lower case, no apostrophes or hyphens, so "Pam's" matches "pams" and "Weet-Bix" matches "weetbix".
-const norm = (s: string) => s.toLowerCase().replace(/['\u2019`]/g, '').replace(/-/g, '').replace(/[^a-z0-9\s]/g, ' ');
+// All the spellings of yoghurt count as one word, since the same product is "yogurt" on one label and "yoghurt" on another.
+const norm = (s: string) => s.toLowerCase().replace(/['\u2019`]/g, '').replace(/-/g, '').replace(/[^a-z0-9\s]/g, ' ').replace(/yo(?:u)?g(?:h)?o?u?rt/g, 'yogurt');
 
-/** Every word you typed must appear in the name or brand. A half typed word still matches. */
-function matchesAll(f: Food, words: string[]) {
-  const hay = norm(`${f.name} ${f.brand ?? ''}`);
-  return words.every((w) => hay.includes(w));
-}
-
-const withNZ = (p: any, f: Food) => ({ ...f, _nz: !!p.countries_tags?.includes('en:new-zealand') } as Food);
+/** What a product can be matched on: its name and brand, plus the category and generic name Open Food Facts files it under. A product called just "Epic Greek Unsweetened" by "The Collective" is still found by "yogurt" because its category is Greek yogurts. */
+type Hit = { f: Food; hay: string };
+const hitOf = (p: any, f: Food): Hit => ({
+  f: { ...f, _nz: !!p.countries_tags?.includes('en:new-zealand') } as Food,
+  hay: norm(`${f.name} ${f.brand ?? ''} ${p.generic_name ?? ''} ${typeof p.categories === 'string' ? p.categories : ''}`),
+});
 
 /** The classic search needs every word to match, which is what a shopping search should do. */
-async function classicSearch(q: string, nzOnly: boolean): Promise<Food[]> {
+async function classicSearch(q: string, nzOnly: boolean): Promise<Hit[]> {
   let url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=25&fields=${FIELDS}`;
   if (nzOnly) url += '&tagtype_0=countries&tag_contains_0=contains&tag_0=new-zealand';
   const j = await getJSON(url);
-  const out: Food[] = [];
+  const out: Hit[] = [];
   for (const p of j?.products ?? []) {
     const f = fromOFF(p);
-    if (f) out.push(withNZ(p, f));
+    if (f) out.push(hitOf(p, f));
   }
   return out;
 }
 
-/** The newer search service is quick but matches any one word, so it is only a fallback. */
-async function modernSearch(q: string): Promise<Food[]> {
+/** The newer search service is quick and matches any one word, so it is how a search that came up short gets a second chance. */
+async function modernSearch(q: string): Promise<Hit[]> {
   const j = await getJSON(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=25&fields=${FIELDS}`);
-  const out: Food[] = [];
+  const out: Hit[] = [];
   for (const h of j?.hits ?? []) {
     const f = fromOFF(h);
-    if (f) out.push(withNZ(h, f));
+    if (f) out.push(hitOf(h, f));
   }
   return out;
 }
 
-/** Text search. Products sold in New Zealand first, then the rest of the world. */
+/** Text search. Products sold in New Zealand first, then the rest of the world. Every word you typed should appear (a half typed word still matches); if that finds fewer than 5, products missing just one word of a long search (3 or more words) are listed after them. */
 export async function searchFoods(term: string, nzFirst = true): Promise<Food[]> {
   const q = term.trim();
   if (q.length < 2) return [];
   const words = norm(q).split(/\s+/).filter(Boolean);
-  const keep = (list: Food[]) => list.filter((f) => f.kcal_100 > 0 && matchesAll(f, words));
   const same = (a: Food, b: Food) => (a.barcode && a.barcode === b.barcode) || (a.name === b.name && a.brand === b.brand);
 
-  let out: Food[] = [];
+  const exact: Food[] = [];
+  const near: Food[] = [];
+  const add = (hits: Hit[]) => {
+    for (const { f, hay } of hits) {
+      if (!(f.kcal_100 > 0) || exact.some((o) => same(o, f)) || near.some((o) => same(o, f))) continue;
+      const matched = words.filter((w) => hay.includes(w)).length;
+      if (matched === words.length) exact.push(f);
+      else if (words.length >= 3 && matched >= words.length - 1) near.push(f);
+    }
+  };
+
   let lastErr: unknown = null;
   let answered = 0; // sources that replied, even with nothing useful
-  try { out = keep(await classicSearch(q, true)); answered++; } catch (e) { lastErr = e; }
-  if (out.length < 5) {
-    try {
-      for (const f of keep(await classicSearch(q, false))) if (!out.some((o) => same(o, f))) out.push(f);
-      answered++;
-    } catch (e) { lastErr = e; }
+  try { add(await classicSearch(q, true)); answered++; } catch (e) { lastErr = e; }
+  if (exact.length < 5) {
+    try { add(await classicSearch(q, false)); answered++; } catch (e) { lastErr = e; }
   }
-  // The quick service is only a backup for when the classic one is down.
-  if (answered === 0) {
-    try { out = keep(await modernSearch(q)); answered++; } catch (e) { lastErr = e; }
+  // The quick service backs up the classic one when it is down or came up short.
+  if (answered === 0 || exact.length < 5) {
+    try { add(await modernSearch(q)); answered++; } catch (e) { lastErr = e; }
   }
   if (answered === 0 && lastErr) throw lastErr;
-  if (!nzFirst) return out;
-  return [...out.filter((f: any) => f._nz), ...out.filter((f: any) => !f._nz)];
+  const order = (list: Food[]) => (nzFirst ? [...list.filter((f: any) => f._nz), ...list.filter((f: any) => !f._nz)] : list);
+  return [...order(exact), ...(exact.length < 5 ? order(near) : [])];
 }

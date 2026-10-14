@@ -286,6 +286,10 @@ export type Food = {
   recipe_id?: string;
 };
 
+/** Most NZ labels list energy in kJ first; 1 kcal is 4.184 kJ. Shown next to kcal for cross checking against a label. */
+export const KJ_PER_KCAL = 4.184;
+export const toKJ = (kcal: number) => Math.round((Number(kcal) || 0) * KJ_PER_KCAL);
+
 /** A measure you defined yourself for a food, e.g. 1 teaspoon of yoghurt = 3 g. `amount` is in the food's own unit (g or ml) for one. */
 export type FoodMeasure = { id: string; label: string; amount: number };
 
