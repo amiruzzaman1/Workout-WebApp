@@ -56,6 +56,11 @@ export default function ProgressScreen() {
   // always Weight, via ?tab=photos; anything else or missing just falls back to the usual default.
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const [tab, setTab] = useState<Tab>(() => (TAB_KEYS.includes(tabParam as Tab) ? (tabParam as Tab) : 'weight'));
+  // The bottom tab bar keeps this screen mounted after the first visit, so a later notification tap (which
+  // only changes the ?tab= param, not a fresh mount) needs its own effect to actually switch tabs.
+  useEffect(() => {
+    if (TAB_KEYS.includes(tabParam as Tab)) setTab(tabParam as Tab);
+  }, [tabParam]);
   return (
     <Screen>
       <Eyebrow>Progress</Eyebrow>

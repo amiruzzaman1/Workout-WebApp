@@ -80,6 +80,9 @@ type Store = {
   coachMessages: CoachMessage[];
   loadCoachMessages: (coach: CoachStyle) => Promise<void>;
   addCoachMessage: (coach: CoachStyle, role: 'user' | 'coach', text: string) => Promise<CoachMessage>;
+  /** Career plan ticks: task id (src/data/careerPlan.ts) to when it was ticked. */
+  careerDone: Record<string, string>;
+  setCareerTask: (taskId: string, done: boolean) => Promise<void>;
   /** Private bucket, so there is no public url; this signs however many ids are visible right now, good for an hour. */
   signProgressPhotos: (ids: string[]) => Promise<Record<string, string>>;
   savePlan: (data: PlanData) => Promise<void>;
@@ -195,6 +198,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [progressPhotos, setProgressPhotos] = useState<ProgressPhoto[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
+  const [careerDone, setCareerDone] = useState<Record<string, string>>({});
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -217,6 +221,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setProgressPhotos([]);
       setRecipes([]);
       setCoachMessages([]);
+      setCareerDone({});
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
@@ -246,6 +251,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAlarms((alData ?? []) as Alarm[]);
     const { data: ppData } = await supabase.from('progress_photos').select('id,day,note,created_at').order('day', { ascending: false });
     setProgressPhotos((ppData ?? []) as ProgressPhoto[]);
+    // Before schema v19 is run the table does not exist; that error just leaves the plan unticked.
+    const { data: cpData } = await supabase.from('career_progress').select('task_id,done_at');
+    setCareerDone(Object.fromEntries(((cpData ?? []) as { task_id: string; done_at: string }[]).map((r) => [r.task_id, r.done_at])));
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -595,10 +603,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadCoachMessages = useCallback(async (coach: CoachStyle) => {
+    // Newest first off the wire so limit() caps from the right end once a conversation passes 200 messages,
+    // then reversed back to chronological order for display.
     const { data, error } = await supabase.from('coach_messages').select('id,coach,role,text,created_at')
-      .eq('coach', coach).order('created_at', { ascending: true }).limit(200);
+      .eq('coach', coach).order('created_at', { ascending: false }).limit(200);
     if (error) throw new Error(error.message);
-    setCoachMessages((data ?? []) as CoachMessage[]);
+    setCoachMessages(((data ?? []) as CoachMessage[]).reverse());
+  }, []);
+
+  const setCareerTask = useCallback(async (taskId: string, done: boolean) => {
+    const at = new Date().toISOString();
+    const apply = (on: boolean) => setCareerDone((m) => {
+      const next = { ...m };
+      if (on) next[taskId] = at; else delete next[taskId];
+      return next;
+    });
+    apply(done);
+    const { error } = done
+      ? await supabase.from('career_progress').upsert({ task_id: taskId, done_at: at })
+      : await supabase.from('career_progress').delete().eq('task_id', taskId);
+    if (error) {
+      apply(!done);
+      throw new Error(error.message);
+    }
   }, []);
 
   const addCoachMessage = useCallback(async (coach: CoachStyle, role: 'user' | 'coach', text: string) => {
@@ -698,7 +725,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
     sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, alarms, addAlarm, updateAlarm, deleteAlarm, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, uploadAvatar, removeAvatar, progressPhotos, addProgressPhoto, deleteProgressPhoto, signProgressPhotos, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
-    coachMessages, loadCoachMessages, addCoachMessage,
+    coachMessages, loadCoachMessages, addCoachMessage, careerDone, setCareerTask,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

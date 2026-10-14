@@ -451,3 +451,17 @@ drop policy if exists "own coach messages" on public.coach_messages;
 create policy "own coach messages" on public.coach_messages for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, delete on public.coach_messages to authenticated;
+
+-- v19: Career plan ticks (app/(tabs)/tracker/career.tsx, plan content in src/data/careerPlan.ts). One row per
+-- ticked task; unticking deletes the row. task_id is the plan's own stable id ("w3t2"), never renumbered.
+create table if not exists public.career_progress (
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  task_id text not null,
+  done_at timestamptz not null default now(),
+  primary key (user_id, task_id)
+);
+alter table public.career_progress enable row level security;
+drop policy if exists "own career progress" on public.career_progress;
+create policy "own career progress" on public.career_progress for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.career_progress to authenticated;

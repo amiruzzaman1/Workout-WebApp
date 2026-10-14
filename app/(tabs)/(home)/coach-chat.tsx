@@ -46,6 +46,10 @@ export default function CoachChat() {
   const ctx = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
   const name = COACHES[coachStyle].name;
   const ready = ai.available && ai.enabled && ai.isLoaded;
+  // coachMessages is shared store state, not cleared on coach switch, so filtering here (rather than trusting
+  // it to already be just this coach's) keeps the other coach's messages from flashing on screen while this
+  // coach's history is still loading, and keeps them off screen for good if that load then fails.
+  const messages = coachMessages.filter((m) => m.coach === coachStyle);
 
   async function send() {
     const q = input.trim();
@@ -53,7 +57,7 @@ export default function CoachChat() {
     setError(null);
     setInput('');
     setThinking(true);
-    const history = coachMessages.map((m) => ({ role: m.role, text: m.text })); // the conversation so far, before this question
+    const history = messages.map((m) => ({ role: m.role, text: m.text })); // the conversation so far, before this question
     try {
       await addCoachMessage(coachStyle, 'user', q);
       const raw = await ai.ask(buildCoachPrompt(q, coachStyle, ctx, history));
@@ -101,12 +105,12 @@ export default function CoachChat() {
       {ready && (
         <>
           <ScrollView ref={scrollRef} style={{ flex: 1, marginTop: 10 }} contentContainerStyle={{ gap: 10, paddingBottom: 10 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-            {historyLoaded && coachMessages.length === 0 && (
+            {historyLoaded && messages.length === 0 && (
               <P muted style={{ fontSize: 13 }}>
                 Ask {name} anything about your training, food or motivation. It knows your streak, your goal progress, and today's numbers, but nothing else, so it can get things wrong; it is a small model.
               </P>
             )}
-            {coachMessages.map((m) => <Bubble key={m.id} msg={m} />)}
+            {messages.map((m) => <Bubble key={m.id} msg={m} />)}
             {thinking && (
               <Row style={{ gap: 8 }}>
                 <ActivityIndicator size="small" color={C.muted} />
