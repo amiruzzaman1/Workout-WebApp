@@ -7,7 +7,7 @@ import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { libToFood, searchLibrary } from '../../../src/lib/foodData';
 import { MEAL_STYLE } from '../../../src/lib/meals';
-import { computeTargets, entryToFood, fmtAmount, Food, MEAL_LABELS, MEALS, Meal, round, scaleFood } from '../../../src/lib/nutrition';
+import { computeTargets, entryToFood, fmtAmount, Food, FoodMeasure, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood } from '../../../src/lib/nutrition';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
 import { foodToItem, recipeToFood } from '../../../src/lib/recipes';
@@ -540,7 +540,7 @@ function Seg<T extends string>({ value, onChange, options }: { value: T; onChang
 function Portion({
   food, meal, onMeal, date, initialAmount, onBack, onEdit, onSave, onSaveUsual,
 }: { food: Food; meal: Meal; onMeal: (m: Meal) => void; date: string; initialAmount?: number; onBack: () => void; onEdit?: () => void; onSave: (e: any) => Promise<void>; onSaveUsual?: (amount: number, unit: string) => Promise<string> }) {
-  const { profile } = useStore();
+  const { profile, foodMeasures, saveFoodMeasure, deleteFoodMeasure } = useStore();
   const t = computeTargets(profile as any);
   const isPiece = food.unit === 'piece';
   const serving = !isPiece && food.serving_g && food.serving_g > 0 ? food.serving_g : null;
@@ -550,9 +550,45 @@ function Portion({
   const [scaleUnit, setScaleUnit] = useState<'base' | 'big'>('base');
   const [busy, setBusy] = useState(false);
   const [usual, setUsual] = useState<string | null>(null);
+  const [measure, setMeasure] = useState<FoodMeasure | null>(null);
+  const [addingMeasure, setAddingMeasure] = useState(false);
+  const [mLabel, setMLabel] = useState('');
+  const [mAmount, setMAmount] = useState('');
+  const [mError, setMError] = useState<string | null>(null);
+  const [mBusy, setMBusy] = useState(false);
+  const myMeasures = foodMeasures[measureKey(food.name)] ?? [];
   const typed = Number(amount.replace(',', '.')) || 0;
-  const qty = scaleUnit === 'big' ? typed * 1000 : typed; // the count (piece) or amount in g/ml (weight)
+  // With one of your own measures picked, what you type is how many of it (4 teaspoons), worked out to g/ml here.
+  const qty = measure ? typed * measure.amount : scaleUnit === 'big' ? typed * 1000 : typed; // the count (piece) or amount in g/ml (weight)
   const m = scaleFood(food, qty);
+
+  function pickMeasure(x: FoodMeasure | null) {
+    setMeasure(x);
+    setScaleUnit('base');
+    setAmount(x ? '1' : String(serving ?? 100));
+  }
+
+  async function addMeasure() {
+    const label = mLabel.trim();
+    const per = Number(mAmount.replace(',', '.'));
+    if (!label) return setMError('Name the measure, like teaspoon or scoop.');
+    if (!(per > 0)) return setMError(`Type how many ${unit} one ${label} is.`);
+    setMBusy(true); setMError(null);
+    try {
+      const saved = await saveFoodMeasure(food.name, label, per);
+      setAddingMeasure(false); setMLabel(''); setMAmount('');
+      pickMeasure(saved);
+    } catch (e: any) {
+      setMError(e?.message ?? 'Could not save. Check your connection and try again.');
+    } finally { setMBusy(false); }
+  }
+
+  async function removeMeasure(x: FoodMeasure) {
+    try {
+      await deleteFoodMeasure(food.name, x.id);
+      if (measure?.id === x.id) pickMeasure(null);
+    } catch (e: any) { setMError(e?.message ?? 'Could not delete.'); }
+  }
 
   /** Switching between g/ml and kg/L converts the number shown, so 500 g becomes 0.5 kg and back. */
   function changeScaleUnit(next: 'base' | 'big') {
@@ -593,8 +629,45 @@ function Portion({
       <Label>Meal</Label>
       <MealPicker meal={meal} onMeal={onMeal} />
 
-      <Label>{isPiece ? 'How many?' : `Amount (${scaleUnit === 'big' ? bigUnit : unit})`}</Label>
-      {isPiece ? (
+      {!isPiece && (
+        <>
+          <Label>My measures</Label>
+          <Row wrap style={{ gap: 6 }}>
+            {myMeasures.map((x) => (
+              <Chip key={x.id} label={`1 ${x.label} = ${round(x.amount)} ${unit}`} active={measure?.id === x.id} onPress={() => pickMeasure(measure?.id === x.id ? null : x)} />
+            ))}
+            <Chip label={myMeasures.length ? 'New measure' : 'Add a measure, like 1 teaspoon = 3 g'} onPress={() => { setAddingMeasure((v) => !v); setMError(null); }} icon={() => <Ionicons name="add" size={14} color={C.muted} />} />
+          </Row>
+          {addingMeasure && (
+            <View style={st.measureBox}>
+              <Label>Measure name</Label>
+              <Input value={mLabel} onChangeText={setMLabel} placeholder="e.g. teaspoon, scoop, cup, handful" accessibilityLabel="Measure name" />
+              <Label>{`How many ${unit} is one`}</Label>
+              <Input value={mAmount} onChangeText={(v) => setMAmount(v.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder={unit === 'ml' ? 'e.g. 5' : 'e.g. 3'} accessibilityLabel={`${unit} per measure`} onSubmitEditing={addMeasure} />
+              <P muted style={{ fontSize: 12 }}>Saved for {food.name} on your account, so you only set it once.</P>
+              {!!mError && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{mError}</Text>}
+              <Row style={{ gap: 8, marginTop: 6 }}>
+                <Button small icon="checkmark" title="Save measure" onPress={addMeasure} loading={mBusy} />
+                <Button small kind="secondary" title="Cancel" onPress={() => setAddingMeasure(false)} />
+              </Row>
+            </View>
+          )}
+          {!addingMeasure && !!mError && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{mError}</Text>}
+        </>
+      )}
+
+      <Label>{measure ? `How many ${measure.label}s?` : isPiece ? 'How many?' : `Amount (${scaleUnit === 'big' ? bigUnit : unit})`}</Label>
+      {measure ? (
+        <>
+          <Row style={{ gap: 8 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Input value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" accessibilityLabel={`Number of ${measure.label}s`} />
+            </View>
+            <Button small kind="secondary" icon="trash-outline" tint={A.over} title="Delete measure" onPress={() => removeMeasure(measure)} />
+          </Row>
+          <Text style={st.measureSum}>{round(typed)} x {round(measure.amount)} {unit} = <Text style={{ color: C.text }}>{round(qty)} {unit}</Text></Text>
+        </>
+      ) : isPiece ? (
         <Input value={amount} onChangeText={(t) => setAmount(t.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" />
       ) : (
         <Row style={{ gap: 8, alignItems: 'flex-start' }}>
@@ -718,6 +791,8 @@ const st = StyleSheet.create({
   tabText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 12 },
   panel: { paddingTop: 4 },
   who: { alignSelf: 'flex-end', fontFamily: F.bodyMed, fontSize: 11, marginTop: 2 },
+  measureBox: { borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, padding: 12, gap: 2, backgroundColor: C.card },
+  measureSum: { color: C.muted, fontFamily: F.bodyMed, fontSize: 13, marginTop: 2 },
   warn: { borderWidth: 1, borderColor: A.carbs, borderRadius: R.md, padding: 12, gap: 6, backgroundColor: C.card },
   warnTitle: { color: A.carbs, fontFamily: F.bodySemi, fontSize: 14 },
   warnText: { color: C.muted, fontFamily: F.body, fontSize: 13, lineHeight: 19 },

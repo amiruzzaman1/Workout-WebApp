@@ -3,7 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { JETTS_NEWTOWN_TEMPLATE } from '../data/machines';
 import { Exercise, setCustomExercises } from './exercises';
 import { generatePlan, PlanData, Profile } from './planner';
-import { Food, FoodEntry } from './nutrition';
+import { Food, FoodEntry, FoodMeasure, measureKey } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
 import { Recipe } from './recipes';
 import { Alarm } from './alarms';
@@ -83,6 +83,10 @@ type Store = {
   /** Career plan ticks: task id (src/data/careerPlan.ts) to when it was ticked. */
   careerDone: Record<string, string>;
   setCareerTask: (taskId: string, done: boolean) => Promise<void>;
+  /** Your own measures per food ("1 teaspoon = 3 g"), keyed by measureKey(food name). */
+  foodMeasures: Record<string, FoodMeasure[]>;
+  saveFoodMeasure: (foodName: string, label: string, amount: number) => Promise<FoodMeasure>;
+  deleteFoodMeasure: (foodName: string, id: string) => Promise<void>;
   /** Private bucket, so there is no public url; this signs however many ids are visible right now, good for an hour. */
   signProgressPhotos: (ids: string[]) => Promise<Record<string, string>>;
   savePlan: (data: PlanData) => Promise<void>;
@@ -199,6 +203,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [coachMessages, setCoachMessages] = useState<CoachMessage[]>([]);
   const [careerDone, setCareerDone] = useState<Record<string, string>>({});
+  const [foodMeasures, setFoodMeasures] = useState<Record<string, FoodMeasure[]>>({});
 
   const loadUserData = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -222,6 +227,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setRecipes([]);
       setCoachMessages([]);
       setCareerDone({});
+      setFoodMeasures({});
       return;
     }
     const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
@@ -254,6 +260,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // Before schema v19 is run the table does not exist; that error just leaves the plan unticked.
     const { data: cpData } = await supabase.from('career_progress').select('task_id,done_at');
     setCareerDone(Object.fromEntries(((cpData ?? []) as { task_id: string; done_at: string }[]).map((r) => [r.task_id, r.done_at])));
+    // Same for schema v20: until it is run, there are just no saved measures.
+    const { data: fmData } = await supabase.from('food_measures').select('id,food_key,label,amount').order('created_at', { ascending: true });
+    const fm: Record<string, FoodMeasure[]> = {};
+    for (const r of (fmData ?? []) as { id: string; food_key: string; label: string; amount: number | string }[]) (fm[r.food_key] ??= []).push({ id: r.id, label: r.label, amount: Number(r.amount) });
+    setFoodMeasures(fm);
     setSharedFoods(((sf.data ?? []) as any[]).map((r) => sharedFromRow(r, s.user.id)));
     setWeights(((wt.data ?? []) as any[]).map((r) => ({ day: r.day, kg: r.kg == null ? null : Number(r.kg), waist_cm: r.waist_cm == null ? null : Number(r.waist_cm) })));
     setSleep((sl.data ?? []) as SleepLog[]);
@@ -611,6 +622,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCoachMessages(((data ?? []) as CoachMessage[]).reverse());
   }, []);
 
+  const saveFoodMeasure = useCallback(async (foodName: string, label: string, amount: number) => {
+    const key = measureKey(foodName);
+    const { data, error } = await supabase.from('food_measures')
+      .upsert({ food_key: key, label: label.trim().toLowerCase(), amount }, { onConflict: 'user_id,food_key,label' })
+      .select('id,label,amount').single();
+    if (error) throw new Error(error.message);
+    const row: FoodMeasure = { id: data.id, label: data.label, amount: Number(data.amount) };
+    setFoodMeasures((m) => ({ ...m, [key]: [...(m[key] ?? []).filter((x) => x.label !== row.label), row] }));
+    return row;
+  }, []);
+
+  const deleteFoodMeasure = useCallback(async (foodName: string, id: string) => {
+    const key = measureKey(foodName);
+    const { error } = await supabase.from('food_measures').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    setFoodMeasures((m) => ({ ...m, [key]: (m[key] ?? []).filter((x) => x.id !== id) }));
+  }, []);
+
   const setCareerTask = useCallback(async (taskId: string, done: boolean) => {
     const at = new Date().toISOString();
     const apply = (on: boolean) => setCareerDone((m) => {
@@ -725,7 +754,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     foodEntries, myFoods, water, addFoodEntry, updateFoodEntry, deleteFoodEntry, saveFood, sharedFoods, addSharedFood, updateSharedFood, setWater, date, setDate,
     sleep, activities, saveSleep, addActivity, updateActivity, deleteActivity, tasks, addTask, updateTask, deleteTask, reminders, addReminder, updateReminder, deleteReminder, alarms, addAlarm, updateAlarm, deleteAlarm, recipes, saveRecipe, deleteRecipe, refreshActivities, weights, logWeight, deleteWeight,
     saveProfile, uploadAvatar, removeAvatar, progressPhotos, addProgressPhoto, deleteProgressPhoto, signProgressPhotos, savePlan, regeneratePlan, toggleEquipment, setEquipment, addCustomExercise, signOut,
-    coachMessages, loadCoachMessages, addCoachMessage, careerDone, setCareerTask,
+    coachMessages, loadCoachMessages, addCoachMessage, careerDone, setCareerTask, foodMeasures, saveFoodMeasure, deleteFoodMeasure,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

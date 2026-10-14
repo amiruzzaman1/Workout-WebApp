@@ -465,3 +465,22 @@ drop policy if exists "own career progress" on public.career_progress;
 create policy "own career progress" on public.career_progress for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.career_progress to authenticated;
+
+-- v20: Your own measures for any food ("1 teaspoon of yoghurt = 3 g"), used on the food portion screen
+-- (app/(tabs)/food/add.tsx). Keyed by the food's name in lower case, so they follow the food wherever you
+-- find it (search, scan, my foods). amount is in the food's own unit, g or ml, for one of that measure.
+create table if not exists public.food_measures (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  food_key text not null,
+  label text not null,
+  amount numeric not null check (amount > 0),
+  created_at timestamptz not null default now(),
+  unique (user_id, food_key, label)
+);
+create index if not exists food_measures_user_idx on public.food_measures (user_id);
+alter table public.food_measures enable row level security;
+drop policy if exists "own food measures" on public.food_measures;
+create policy "own food measures" on public.food_measures for all to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+grant select, insert, update, delete on public.food_measures to authenticated;

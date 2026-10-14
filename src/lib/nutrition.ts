@@ -286,6 +286,12 @@ export type Food = {
   recipe_id?: string;
 };
 
+/** A measure you defined yourself for a food, e.g. 1 teaspoon of yoghurt = 3 g. `amount` is in the food's own unit (g or ml) for one. */
+export type FoodMeasure = { id: string; label: string; amount: number };
+
+/** Measures are saved against the food's name, so they follow it wherever it is found. */
+export const measureKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, ' ');
+
 export type FoodEntry = {
   id: string;
   eaten_on: string;
