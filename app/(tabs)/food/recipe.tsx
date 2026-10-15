@@ -73,7 +73,7 @@ function IngredientSearch({ onPick }: { onPick: (f: Food) => void }) {
     return () => clearTimeout(t);
   }, [term]);
 
-  const spice = useMemo(() => searchLibrary(q, ['ingredient'], 6).map(libToFood), [q]);
+  const spice = useMemo(() => searchLibrary(q, ['ingredient', 'cooked'], 6).map(libToFood), [q]);
   const south = useMemo(() => searchLibrary(q, ['dish', 'bangladesh'], 6).map(libToFood), [q]);
   const mine = useMemo(() => {
     if (!term) return [];

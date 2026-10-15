@@ -150,6 +150,7 @@ export default function AddFood() {
   }, [q, recipes]);
   const dishHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['dish'], 6).map(libToFood) : []), [q]);
   const bdHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['bangladesh'], 5).map(libToFood) : []), [q]);
+  const cookedHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['cooked'], 14).map(libToFood) : []), [q]);
   const ingHits = useMemo(() => (q.trim().length >= 2 ? searchLibrary(q, ['ingredient'], 5).map(libToFood) : []), [q]);
 
   if (editShared) {
@@ -261,6 +262,12 @@ export default function AddFood() {
                 <FoodList foods={local} onPick={setFood} />
               </View>
             )}
+            {cookedHits.length > 0 && (
+              <View style={st.panel}>
+                <Text style={st.panelLabel}>Air fryer and cooked basics</Text>
+                <FoodList foods={cookedHits} onPick={setFood} />
+              </View>
+            )}
             {dishHits.length > 0 && (
               <View style={st.panel}>
                 <Text style={st.panelLabel}>South Asian dishes</Text>
@@ -285,7 +292,7 @@ export default function AddFood() {
                 <FoodList foods={online} onPick={setFood} />
               </View>
             )}
-            {q.trim().length >= 3 && !busy && online.length === 0 && local.length === 0 && sharedHits.length === 0 && recipeHits.length === 0 && dishHits.length === 0 && bdHits.length === 0 && ingHits.length === 0 && (
+            {q.trim().length >= 3 && !busy && online.length === 0 && local.length === 0 && sharedHits.length === 0 && recipeHits.length === 0 && cookedHits.length === 0 && dishHits.length === 0 && bdHits.length === 0 && ingHits.length === 0 && (
               <View style={st.note}>
                 <Text style={st.noteTitle}>{err ? 'Search is not working right now' : `Can't find "${q.trim()}"`} 👉👈🥺</Text>
                 <P muted style={{ fontSize: 13 }}>
@@ -299,7 +306,7 @@ export default function AddFood() {
               <Button small kind="secondary" icon="restaurant-outline" tint={A.carbs} title="Build a recipe" onPress={() => router.push('/food/recipe')} />
               <Button small kind="secondary" icon="book-outline" tint={A.carbs} title="My recipes" onPress={() => router.push('/food/recipes')} />
             </Row>
-            <P muted style={{ fontSize: 12 }}>Products sold in New Zealand are listed first. South Asian dishes come from the Indian Nutrient Databank, Bangladeshi foods from the Food Composition Table for Bangladesh, and ingredients from USDA FoodData Central.</P>
+            <P muted style={{ fontSize: 12 }}>Products sold in New Zealand are listed first. Air fryer and cooked basics (cooked without added oil, so add any oil you use) and ingredients come from USDA FoodData Central, South Asian dishes from the Indian Nutrient Databank, Bangladeshi foods from the Food Composition Table for Bangladesh.</P>
           </View>
         )}
 

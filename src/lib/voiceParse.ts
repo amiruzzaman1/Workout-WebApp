@@ -141,7 +141,7 @@ export function findFood(query: string, known: Food[]): Food | null {
   }
   // A real match among your own foods always wins; the shared library is only a fallback, never over your own data.
   if (best) return best;
-  const lib = searchLibrary(query, ['dish', 'bangladesh', 'ingredient'], 1);
+  const lib = searchLibrary(query, ['dish', 'bangladesh', 'ingredient', 'cooked'], 1);
   return lib.length ? libToFood(lib[0]) : null;
 }
 

@@ -1,11 +1,12 @@
 // Built in food lists that work offline: ingredients with household measures (USDA), South Asian dishes (Indian Nutrient
 // Databank) and Bangladeshi foods (Food Composition Table for Bangladesh). See scripts/build-food-data.py for the sources.
 import bdRaw from '../data/bdfoods.json';
+import cookedRaw from '../data/cooked.json';
 import dishRaw from '../data/dishes.json';
 import ingRaw from '../data/ingredients.json';
 import { Food } from './nutrition';
 
-export type LibKind = 'ingredient' | 'bangladesh' | 'dish';
+export type LibKind = 'ingredient' | 'bangladesh' | 'dish' | 'cooked';
 
 /** Values are per 100 g. `d` is grams in one ml (for liquids and powders), `pc` is grams in one piece, `g` is grams in one serving. */
 export type LibItem = {
@@ -16,12 +17,14 @@ export type LibItem = {
 
 export const SOURCE_LABEL: Record<LibKind, string> = {
   ingredient: 'USDA FoodData Central',
+  cooked: 'USDA FoodData Central, cooked without added oil',
   bangladesh: 'Bangladesh Food Composition Table',
   dish: 'Indian Nutrient Databank',
 };
 
 const all: LibItem[] = [
   ...(ingRaw as any[]).map((x) => ({ ...x, kind: 'ingredient' as const })),
+  ...(cookedRaw as any[]).map((x) => ({ ...x, kind: 'cooked' as const })),
   ...(bdRaw as any[]).map((x) => ({ ...x, kind: 'bangladesh' as const })),
   ...(dishRaw as any[]).map((x) => ({ ...x, kind: 'dish' as const, aka: '', group: 'South Asian dishes' })),
 ];
@@ -34,11 +37,13 @@ export function searchLibrary(query: string, kinds: LibKind[], limit = 8): LibIt
   const words = norm(query).split(' ').filter(Boolean);
   if (!words.length) return [];
   const out: { x: LibItem; score: number }[] = [];
-  for (const e of index) {
+  for (let i = 0; i < index.length; i++) {
+    const e = index[i];
     if (!kinds.includes(e.x.kind)) continue;
     if (!words.every((w) => e.hay.includes(w))) continue;
     const starts = e.name.startsWith(words[0]) ? 0 : e.hay.includes(` ${words[0]}`) ? 1 : 2;
-    out.push({ x: e.x, score: starts * 1000 + e.name.length });
+    // The cooked basics are in the order they were written (breast, thigh, drumstick, wing), not by name length.
+    out.push({ x: e.x, score: starts * 1000 + (e.x.kind === 'cooked' ? i : e.name.length) });
   }
   return out.sort((a, b) => a.score - b.score).slice(0, limit).map((o) => o.x);
 }
