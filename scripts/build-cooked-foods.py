@@ -79,6 +79,19 @@ ITEMS = [
 ]
 
 
+# Bone in versions, for weighing the cooked piece with the bone still in. USDA's numbers are for the meat without the
+# bone, and it publishes no bone weight, so the share of a cooked bone in piece that is meat (and skin) is an estimate
+# from published figures that disagree (roughly 70 to 75% for a thigh, 50 to 75% for a drumstick), taken toward the
+# cautious side. Every nutrient is the USDA meat and skin value times that share.
+# id, name, other words, group, USDA fdc_id, text the USDA description must contain, edible share
+BONE_IN = [
+    ('breast-bone', 'Air fried chicken breast, bone in, with skin (weigh with the bone, about 75% is meat)', AIR + 'chicken breasts bone in on the bone', CH, 171075, 'breast, meat and skin, cooked, roasted', 0.75),
+    ('thigh-bone', 'Air fried chicken thigh, bone in, with skin (weigh with the bone, about 70% is meat)', AIR + 'chicken thighs bone in on the bone', CH, 173625, 'thigh, meat and skin, cooked, roasted', 0.70),
+    ('drumstick-bone', 'Air fried chicken drumstick, bone in, with skin (weigh with the bone, about 60% is meat)', AIR + 'chicken drumsticks legs leg bone in on the bone', CH, 173612, 'drumstick, meat and skin, cooked, roasted', 0.60),
+    ('wing-bone', 'Air fried chicken wings, bone in, with skin (weigh with the bone, about 50% is meat)', AIR + 'chicken wing wings bone in on the bone', CH, 173630, 'wing, meat and skin, cooked, roasted', 0.50),
+]
+
+
 def r(v, d=2):
     return round(float(v), d)
 
@@ -96,6 +109,18 @@ for id_, name, aka, group, fid, must, g, u in ITEMS:
             o[key] = r(n[key], 1)
     if g:
         o['g'], o['u'] = g, u
+    out.append(o)
+
+for id_, name, aka, group, fid, must, share in BONE_IN:
+    desc = food.loc[fid, 'description']
+    if must.lower() not in desc.lower():
+        raise SystemExit(f'{id_}: USDA {fid} is "{desc}", expected it to contain "{must}"')
+    n = {NUT[k]: float(v) for k, v in fn[fn.fdc_id == fid][['nutrient_id', 'amount']].itertuples(index=False)}
+    o = {'id': 'cooked-' + id_, 'name': name, 'aka': aka.strip(), 'group': group,
+         'k': r(n['k'] * share, 0), 'p': r(n['p'] * share, 1), 'c': r(n.get('c', 0) * share, 1), 'f': r(n['f'] * share, 1)}
+    for key in ('su', 'sf', 'fi', 'so'):
+        if key in n:
+            o[key] = r(n[key] * share, 1)
     out.append(o)
 
 json.dump(out, open('src/data/cooked.json', 'w'), separators=(',', ':'))
