@@ -15,13 +15,22 @@ export const PHASES: Record<Phase, { label: string; blurb: string; color: string
 };
 
 export type Link = { label: string; url: string; kind?: string };
-export type CareerTask = { id: string; text: string; links: Link[] };
-export type CareerEvent = { when: string; text: string; url: string };
-export type CareerWeek = { n: number; phase: Phase; title: string; goal: string; tasks: CareerTask[]; events: CareerEvent[] };
+export type CareerTask = { id: string; text: string; links: Link[]; how?: string; time?: string };
+export type CareerWeek = { n: number; phase: Phase; title: string; goal: string; tasks: CareerTask[] };
 
 const yt = (q: string) => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 
 export const U = {
+  aiNav: 'https://aiskillsnavigator.microsoft.com/credentials/cert-3fb198f57997226a824aa5f52a1a22af9a4597941b2288ed39371c7a9e6bd7c9',
+  aiGuide: 'https://aka.ms/AI103-StudyGuide',
+  aiSandbox: 'https://aka.ms/examdemo',
+  aiSchedule: 'https://learn.microsoft.com/en-us/credentials/certifications/schedule-through-pearson-vue?examUid=exam.AI-103&examUrl=https://learn.microsoft.com/credentials/',
+  retake: 'https://learn.microsoft.com/en-us/credentials/support/retake-policy',
+  deals: 'https://learn.microsoft.com/en-us/credentials/certifications/deals',
+  examExperience: 'https://learn.microsoft.com/en-us/credentials/support/exam-duration-exam-experience',
+  renew: 'https://learn.microsoft.com/en-us/credentials/certifications/renew-your-microsoft-certification',
+  pearson: 'https://home.pearsonvue.com/microsoft',
+  aiShow: 'https://learn.microsoft.com/en-us/shows/ai-show/',
   csharp: 'https://learn.microsoft.com/en-us/dotnet/csharp/',
   csTour: 'https://learn.microsoft.com/en-us/dotnet/csharp/tour-of-csharp/',
   csFirst: 'https://learn.microsoft.com/en-us/training/paths/csharp-first-steps/',
@@ -87,11 +96,12 @@ export const U = {
 };
 
 type RawTask = [string, [string, string, string?][]];
-type RawWeek = { phase: Phase; title: string; goal: string; tasks: RawTask[]; events?: [string, string, string][] };
+type RawWeek = { phase: Phase; title: string; goal: string; tasks: RawTask[] };
 
 const GYM: RawTask = ['Gym: 4 sessions logged in Forge', []];
 const neet: [string, string, string] = ['NeetCode roadmap', U.neet, 'site'];
 const ai103: [string, string, string] = ['AI-103 page', U.ai103, 'Microsoft'];
+const guide103: [string, string, string] = ['AI-103 study guide', U.aiGuide, 'Microsoft'];
 
 const RAW: RawWeek[] = [
   { phase: 'base', title: 'Hands back on the keyboard', goal: 'C# fluency, Git without thinking, and the free student perks that pay for the rest of the block.', tasks: [
@@ -103,7 +113,7 @@ const RAW: RawWeek[] = [
     ['Fulton Hogan graduate programme closes 21 Oct. Apply if an IT stream fits', [['Fulton Hogan early careers', U.fulton, 'site']]],
     ['LinkedIn headline: Software Engineer, C#, .NET, Azure, React', []],
     GYM,
-  ], events: [['21 to 22 Oct', 'Agentic Build Day NZ, Auckland. Go if you can travel, otherwise follow what people post from it.', U.devevents]] },
+  ] },
   { phase: 'base', title: 'TypeScript and React', goal: 'The frontend half of full stack, and SQL you can write from memory.', tasks: [
     ['C# in depth: classes and interfaces, collections, LINQ, async and await, errors and tests', [['C# docs', U.csharp, 'Microsoft'], ['.NET Learn', U.dotnetLearn, 'Microsoft'], ['LINQ and async in C#', yt('C# LINQ async await tutorial'), 'YouTube']]],
     ['TypeScript Handbook: everyday types through generics', [['TS Handbook', U.ts, 'docs'], ['TypeScript crash course', yt('TypeScript crash course'), 'YouTube']]],
@@ -112,7 +122,7 @@ const RAW: RawWeek[] = [
     ['All SQLBolt lessons', [['SQLBolt', U.sql, 'site']]],
     ['DSA: 10 problems, Two Pointers and Sliding Window', [neet]],
     GYM,
-  ], events: [['30 to 31 Oct', 'Kawaiicon, Michael Fowler Centre, Wellington. Security conference, very good for meeting Wellington engineers.', U.techevents]] },
+  ] },
   { phase: 'base', title: 'Backends and databases', goal: 'An ASP.NET Core API on a real database, tested, on GitHub.', tasks: [
     ['ASP.NET Core: build a minimal API and a controller based web API', [['Minimal API tutorial', U.minApi, 'Microsoft'], ['Web API tutorial', U.webApi, 'Microsoft'], ['ASP.NET Core docs', U.aspnet, 'Microsoft'], ['ASP.NET Core course', yt('ASP.NET Core Web API full course'), 'YouTube']]],
     ['Entity Framework Core: models, migrations and relationships', [['EF Core first app', U.efcore, 'Microsoft'], ['EF Core tutorial', yt('Entity Framework Core tutorial'), 'YouTube']]],
@@ -124,12 +134,13 @@ const RAW: RawWeek[] = [
   { phase: 'build', title: 'Ship it on Azure, and how LLMs work', goal: 'Put your week 3 API live on Azure with sign in, understand the model, and start the AI-103 path.', tasks: [
     ['Deploy the week 3 API to Azure App Service with Azure SQL', [['App Service quickstart', U.appService, 'Microsoft'], ['Container Apps docs', U.aca, 'Microsoft']]],
     ['Sign in for your API: ASP.NET Core Identity and JWT tokens', [['ASP.NET Core Identity', U.identity, 'Microsoft']]],
-    ['Read the AI-103 skills outline and start its Microsoft Learn path', [['AI-103 certification page', U.ai103, 'Microsoft']]],
+    ['Read the AI-103 skills outline and start its Microsoft Learn path', [guide103, ['AI-103 certification page', U.ai103, 'Microsoft']]],
     ['Karpathy: Intro to LLMs, then call Azure OpenAI from C# with the .NET AI libraries', [['Karpathy channel', U.karpathy, 'YouTube'], ['.NET AI docs', U.dotnetAi, 'Microsoft'], ['Generative AI for Beginners .NET', U.genaiDotnet, 'Microsoft'], ['Azure OpenAI docs', U.aoai, 'Microsoft']]],
     ['Forge: add unit tests for coach.ts and nutrition.ts, run them in GitHub Actions', [['GitHub Actions docs', U.actions, 'docs']]],
     ['DSA: 10 problems, Linked List and Trees', [neet]],
     GYM,
-  ], events: [['12 to 13 Nov', 'Product Aotearoa, Tākina and Te Papa, Wellington.', U.techevents], ['13 Nov', 'HackAotearoa co-working for builders, Wellington CBD. Bring project 2.', U.techevents]] },
+    ['Python for the AI-103 labs: the exam is Python based, so do a short course for someone who already codes', [['Python tutorial', U.pyTut, 'docs'], ['CS50 Python', U.cs50p, 'course'], ['Python for C# developers', yt('Python for C# developers crash course'), 'YouTube']]],
+  ] },
   { phase: 'build', title: 'Retrieval (RAG)', goal: 'Start project 2: an assistant that answers from public NZ documents, such as Immigration NZ or council policy PDFs, and cites its sources.', tasks: [
     ['Generative AI for Beginners .NET, the retrieval and embeddings lessons', [['.NET course', U.genaiDotnet, 'Microsoft'], ['Python course', U.genai, 'Microsoft']]],
     ['One DeepLearning.AI short course on RAG or embeddings', [['Short courses', U.dlai, 'course']]],
@@ -137,6 +148,7 @@ const RAW: RawWeek[] = [
     ['Project 2: an ASP.NET Core API that ingests 50 or more documents and answers with citations', []],
     ['DSA: 10 problems, Trees and Heaps', [neet]],
     GYM,
+    ['First Python call to a Foundry model: deploy a model and call it with the Foundry Python SDK', [['Foundry docs', U.foundry, 'Microsoft'], ['Foundry quickstart', yt('Microsoft Foundry Python SDK quickstart'), 'YouTube']]],
   ] },
   { phase: 'build', title: 'Agents', goal: 'Give project 2 tools in C# and a measured quality bar.', tasks: [
     ['AI Agents for Beginners, all lessons', [['GitHub course', U.agents, 'Microsoft']]],
@@ -146,17 +158,18 @@ const RAW: RawWeek[] = [
     ['AI-103 Learn path: finish the generative AI and agents modules', [ai103]],
     ['DSA: 10 problems, Graphs', [neet]],
     GYM,
-  ], events: [['25 Nov', 'AI Engineering Summit, Auckland City Centre.', U.eventbrite], ['26 Nov', 'HackerX Auckland, a hiring event. Look for the developer ticket.', U.eventbrite], ['26 to 27 Nov', 'Indigenous Tech Summit, Wellington: AI and data sovereignty.', U.techevents], ['27 Nov', 'HackAotearoa co-working, Wellington CBD.', U.techevents]] },
+    ['Rebuild one step of project 2 in Python with the Foundry SDK, so you can read the exam style code', [['Foundry docs', U.foundry, 'Microsoft']]],
+  ] },
   { phase: 'peak', title: 'AI-103 exam prep', goal: 'Close the gaps, score well on the practice test, and book the exam.', tasks: [
     ['AI-103 Learn path: vision, language and document intelligence modules', [ai103]],
-    ['Microsoft free practice assessment, 80% or more twice in a row', [['Linked on the AI-103 page', U.ai103, 'Microsoft']]],
-    ['Watch one AI-103 cram video', [['AI-103 cram videos', yt('AI-103 exam cram'), 'YouTube']]],
-    ['Book AI-103 for week 8', []],
+    ['AI-103 practice assessment on AI Skills Navigator, 80% or more twice in a row', [['Practice assessment', U.aiNav, 'Microsoft'], ['Exam sandbox', U.aiSandbox, 'Microsoft']]],
+    ['Watch one AI-103 cram video', [['AI-103 cram videos', yt('AI-103 exam cram'), 'YouTube'], ['The AI Show', U.aiShow, 'Microsoft']]],
+    ['Book AI-103 for week 8', [['Schedule on Pearson VUE', U.aiSchedule, 'Microsoft'], ['Exam experience', U.examExperience, 'Microsoft']]],
     ['DSA: 8 problems, mixed review', [['LeetCode', U.leet, 'site']]],
     GYM,
   ] },
   { phase: 'peak', title: 'Pass AI-103, ship project 2', goal: 'Certified, and project 2 running in production on Azure with a pipeline.', tasks: [
-    ['Sit and pass AI-103', [ai103]],
+    ['Sit and pass AI-103', [ai103, ['Exam sandbox', U.aiSandbox, 'Microsoft'], ['Retake rules', U.retake, 'Microsoft']]],
     ['Containerise project 2 with Docker', [['Docker get started', U.docker, 'docs']]],
     ['Deploy to Azure Container Apps', [['Container Apps docs', U.aca, 'Microsoft']]],
     ['GitHub Actions (or Azure DevOps): test, build and deploy on every push', [['GitHub Actions docs', U.actions, 'docs'], ['Azure DevOps docs', U.azDevops, 'Microsoft']]],
@@ -210,13 +223,107 @@ const RAW: RawWeek[] = [
   ] },
 ];
 
+const DETAILS: Record<string, { how: string; time: string }> = {
+  "w1t0": { how: "Install VS Code and Git. Make a GitHub account with your university email, then apply for the Student Developer Pack at the link. It is usually approved within a few days and gives you free Copilot.", time: "1 hour" },
+  "w1t1": { how: "Open the Azure for Students page, sign in with your university email and verify. You get free credit with no card, which is enough for this whole plan.", time: "20 minutes" },
+  "w1t2": { how: "Install the .NET SDK, then the C# Dev Kit extension in VS Code. Work through the Get started with C# path in order and type every exercise yourself. You are done when you can write a small console program with loops, methods and a list without looking anything up.", time: "8 to 10 hours over the week" },
+  "w1t3": { how: "Open Learn Git Branching and clear every level, branches, merge and rebase first. Then make a practice repository and repeat the same moves on the command line.", time: "2 hours" },
+  "w1t4": { how: "Open the NeetCode roadmap, Arrays and Hashing, and solve 10 problems in C#. Try each one yourself for 20 minutes before you watch the video. Write the pattern in one line afterwards.", time: "3 hours, about 30 minutes a day" },
+  "w1t5": { how: "Open the Fulton Hogan page and read the IT streams. Apply today if one fits you. If none do, skip it and move on. It closes today.", time: "30 minutes" },
+  "w1t6": { how: "Set your headline to the new title, add the skills C#, .NET, Azure and React, and write two lines in About on moving into software in NZ. Turn on Open to Work for recruiters only.", time: "30 minutes" },
+  "w1t7": { how: "Open Forge and follow this week's plan. Fix the four days now so study never pushes them out, and log each session.", time: "4 sessions" },
+  "w2t0": { how: "Finish the parts of the C# path on classes, collections, LINQ and async await. Then write a small console app that reads a file, filters it with LINQ and prints a summary. Add two tests.", time: "6 hours" },
+  "w2t1": { how: "Read the TypeScript Handbook up to generics and run the playground examples. Convert one small JavaScript snippet to TypeScript. You are done when you can type function arguments, objects and arrays.", time: "3 hours" },
+  "w2t2": { how: "Go through react.dev Learn in order and type the examples: components, props, state, effects. Finish by building the tic tac toe tutorial.", time: "6 hours" },
+  "w2t3": { how: "Do parts 0 to 2 of Full Stack Open: React basics, forms, and getting data from a server. Do the exercises, not only the reading, and keep them in one GitHub repository.", time: "6 hours" },
+  "w2t4": { how: "Complete all the SQLBolt lessons, then write 5 queries of your own on a sample database.", time: "2 hours" },
+  "w2t5": { how: "NeetCode Two Pointers and Sliding Window, 10 problems in C#. Same rule as last week: try first, watch after.", time: "3 hours" },
+  "w2t6": { how: "Four sessions in Forge. Keep the same days as last week.", time: "4 sessions" },
+  "w3t0": { how: "Follow the minimal API tutorial, then the controller based web API tutorial. Run both and call them from the browser and from the Swagger page. You are done when you can explain the difference between the two styles.", time: "6 hours" },
+  "w3t1": { how: "Follow the EF Core first app tutorial. Add two related tables, create a migration, update the database, and practise a one to many relationship.", time: "4 hours" },
+  "w3t2": { how: "Do the T-SQL path for joins and aggregates. Add one index and look at a query plan once. Learn BEGIN TRANSACTION and ROLLBACK. PostgreSQL is fine if you prefer it, the ideas are the same.", time: "4 hours" },
+  "w3t3": { how: "Build a small API, for example a habit or food log, on EF Core and SQL with 5 xUnit tests. Write a README on how to run it and push it to GitHub. This is your first portfolio project.", time: "8 hours" },
+  "w3t4": { how: "NeetCode Stack and Binary Search, 10 problems.", time: "3 hours" },
+  "w3t5": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w4t0": { how: "Create an App Service and an Azure SQL database by following the quickstart. Set a spending alert first. Publish your API from VS Code or GitHub, open the live address and call it.", time: "3 hours" },
+  "w4t1": { how: "Add ASP.NET Core Identity or JWT sign in so only signed in users can write. Test it with a missing token and a wrong token. Both should be refused.", time: "5 hours" },
+  "w4t2": { how: "Open the AI-103 study guide and read the skills measured. Start the AI-103 learning path on Microsoft Learn. Write the five areas and their weights on one page: plan and manage 25 to 30 percent, generative AI and agents 30 to 35 percent, and three areas at 10 to 15 percent each.", time: "2 hours" },
+  "w4t3": { how: "Watch Karpathy's Intro to LLMs. Then follow the .NET AI docs to call Azure OpenAI from a C# console app and stream the answer back.", time: "5 hours" },
+  "w4t4": { how: "Add unit tests for the coach and nutrition code in Forge and run them in a GitHub Action on every push. It gives you a CV line: automated tests and CI.", time: "4 hours" },
+  "w4t5": { how: "NeetCode Linked List and Trees, 10 problems.", time: "3 hours" },
+  "w4t6": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w4t7": { how: "The AI-103 exam and its labs use Python. Spend two evenings on Python for someone who already codes: syntax, lists and dictionaries, functions, virtual environments, pip, and calling an API with requests. You do not need more than that.", time: "4 hours" },
+  "w5t0": { how: "Do the retrieval and embeddings lessons in the .NET course. Run the sample, swap in your own documents and watch how the answers change.", time: "4 hours" },
+  "w5t1": { how: "Pick one short course on RAG or embeddings and finish it. Write notes on chunk size, overlap and how results are ranked.", time: "2 hours" },
+  "w5t2": { how: "Choose Azure AI Search or pgvector. Index a few documents, run a vector query and a keyword query, and compare what comes back.", time: "5 hours" },
+  "w5t3": { how: "Collect 50 public NZ documents such as Immigration NZ or council PDFs. Build the API: split them into chunks, create embeddings, store them, search, and answer with the source named. Keep it in a public GitHub repository. This is project 2.", time: "10 hours" },
+  "w5t4": { how: "NeetCode Trees and Heaps, 10 problems.", time: "3 hours" },
+  "w5t5": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w5t6": { how: "In the Microsoft Foundry portal deploy a model, then make your first call from Python with the Foundry SDK by following the quickstart. This is the style of code the exam uses.", time: "2 hours" },
+  "w6t0": { how: "Work through the lessons in order. Run at least three of the notebooks yourself and change something in each.", time: "6 hours" },
+  "w6t1": { how: "Build one agent in C# with the Foundry Agent Service or Semantic Kernel, with one tool it can call, for example a search function. Look at the trace of its steps to see how it decided.", time: "6 hours" },
+  "w6t2": { how: "Give project 2 an agent that searches your documents, summarises and drafts a reply. Keep a human approval step before it does anything final.", time: "8 hours" },
+  "w6t3": { how: "Write 20 questions with the correct answer and the right source. Run them after every change and record the score in the README. Employers like seeing this.", time: "3 hours" },
+  "w6t4": { how: "Finish the generative AI and agent modules of the AI-103 path. Do the labs, not only the reading.", time: "5 hours" },
+  "w6t5": { how: "NeetCode Graphs, 10 problems.", time: "3 hours" },
+  "w6t6": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w6t7": { how: "Rewrite one project 2 step in Python with the Foundry SDK, for example the retrieval call, so you can read and write the exam's code style.", time: "3 hours" },
+  "w7t0": { how: "Finish the vision, language and document intelligence modules. Each is 10 to 15 percent of the exam.", time: "8 hours" },
+  "w7t1": { how: "Sign in to AI Skills Navigator and take the AI-103 practice assessment. Review every wrong answer, then retake until you score 80 percent twice in a row. Also open the exam sandbox once to see the question types.", time: "3 hours" },
+  "w7t2": { how: "Watch one recent cram video. Use it to find gaps, not to learn from scratch.", time: "2 hours" },
+  "w7t3": { how: "On the exam page click Schedule exam, which goes to Pearson VUE. Sign in with your personal Microsoft account, not a work or school one. Pick Friday 11 December, which leaves a retake window, and choose test centre or online. Check the NZ price before you pay.", time: "30 minutes" },
+  "w7t4": { how: "Mixed review, 8 problems. Redo any you got wrong earlier.", time: "2 hours" },
+  "w7t5": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w8t0": { how: "Do the sandbox once more. The day before, test your camera or find your test centre. The exam is 120 minutes and you need 700 out of 1000. Bring photo ID. If you fail you can retake after 24 hours, so keep Monday 14 December free as the backup.", time: "2 hours for the exam" },
+  "w8t1": { how: "Write a Dockerfile for the API, build it, run it locally and fix errors. Push the image to a registry.", time: "3 hours" },
+  "w8t2": { how: "Deploy the container to Azure Container Apps and get a public address. Put the database connection in a secret, not in the code.", time: "4 hours" },
+  "w8t3": { how: "Add a GitHub Actions workflow that builds, runs the tests, builds the image and deploys on every push to main. Add the green badge to the README.", time: "4 hours" },
+  "w8t4": { how: "Add Application Insights, create one alert for errors, and set a monthly cost limit in Azure Cost Management.", time: "2 hours" },
+  "w8t5": { how: "Post the certificate and a 5 line summary of project 2 on LinkedIn, with the live link and the GitHub link.", time: "1 hour" },
+  "w8t6": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w9t0": { how: "Learn React with TypeScript: typed props, state, forms, and fetching data. Build a list page and a form page.", time: "6 hours" },
+  "w9t1": { how: "Build the front end for project 2: a search box, answers with their sources, and sign in against your API. Host it on Vercel or Azure Static Web Apps.", time: "10 hours" },
+  "w9t2": { how: "Write the Forge README with screenshots, a diagram, how to run it, and what you would add next. Do the same for project 2.", time: "3 hours" },
+  "w9t3": { how: "Make a one page portfolio on Vercel with links to Forge, project 2 and your CV. Put the link on LinkedIn.", time: "3 hours" },
+  "w9t4": { how: "NeetCode 1D Dynamic Programming, 10 problems.", time: "3 hours" },
+  "w9t5": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w10t0": { how: "Make one small change to project 2 each day: a test, a bug fix, a faster query. Commit every day to keep the streak.", time: "30 minutes a day" },
+  "w10t1": { how: "One problem a day, your weakest topic first.", time: "30 minutes a day" },
+  "w10t2": { how: "Write about 600 words: your 20 question test, how you scored, and what you changed. Post it on LinkedIn or dev.to.", time: "3 hours" },
+  "w10t3": { how: "Record your phone explaining project 2 in 2 minutes. Watch it, note the filler words, and record it again.", time: "1 hour" },
+  "w10t4": { how: "Apply to 5 roles that fit. Many companies are closed this week, but some start reading applications on 5 January.", time: "2 hours" },
+  "w10t5": { how: "Three lighter sessions this week. Rest and sleep.", time: "3 sessions" },
+  "w11t0": { how: "Read the resume and behavioural sections. Write three stories in the STAR format: a problem you solved, a mistake you made, and a time you worked with others.", time: "3 hours" },
+  "w11t1": { how: "One page: short summary, skills, your two projects first with links, the AI-103 certificate, education, and a work rights line. Ask a friend to read it.", time: "3 hours" },
+  "w11t2": { how: "Read the basics: load balancers, caching, databases, queues. Practise explaining a URL shortener out loud for 10 minutes.", time: "4 hours" },
+  "w11t3": { how: "On Seek set the pay filter to $73k or more and search Software Engineer, .NET Developer and C# Developer. Apply with a short note naming one project. Keep a list of each application.", time: "6 hours" },
+  "w11t4": { how: "Send your CV and a short message to two tech recruiters at Hays, Randstad, Robert Walters or Absolute IT. Ask for a call.", time: "2 hours" },
+  "w11t5": { how: "10 mixed problems, timed at 30 minutes each.", time: "3 hours" },
+  "w11t6": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w12t0": { how: "Practise the 2 minute and the 10 minute version of each project with a timer, out loud, with no notes.", time: "3 hours" },
+  "w12t1": { how: "Apply to 10 roles and follow up the earlier ones.", time: "5 hours" },
+  "w12t2": { how: "Redo your weakest topic first, 10 problems.", time: "3 hours" },
+  "w12t3": { how: "Only if recruiters ask for it. Check on Microsoft Learn that a certification is still current before you book anything.", time: "30 minutes" },
+  "w12t4": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w13t0": { how: "Aim for 20 applications this week. Tailor the first two lines of each note to the company.", time: "10 hours" },
+  "w13t1": { how: "Message 10 engineers on LinkedIn at companies you like and ask for 15 minutes about their team. Keep it to three short lines.", time: "3 hours" },
+  "w13t2": { how: "Book two mock interviews with friends or an online partner: one coding, one behavioural plus system design.", time: "3 hours" },
+  "w13t3": { how: "Four sessions in Forge.", time: "4 sessions" },
+  "w14t0": { how: "Send 20 more applications and follow up on last week's ones with a short, polite email.", time: "10 hours" },
+  "w14t1": { how: "Prepare 5 questions to ask them and your salary answer. Never go below the visa line, and know your target number.", time: "2 hours" },
+  "w14t2": { how: "Before you accept, check the job title maps to Software Engineer or Developer, and the pay is at or above the median wage on the Immigration NZ page.", time: "1 hour" },
+  "w14t3": { how: "Four sessions in Forge.", time: "4 sessions" },
+};
+
 export const PLAN: CareerWeek[] = RAW.map((w, wi) => ({
   n: wi + 1,
   phase: w.phase,
   title: w.title,
   goal: w.goal,
-  tasks: w.tasks.map(([text, links], ti) => ({ id: `w${wi + 1}t${ti}`, text, links: links.map(([label, url, kind]) => ({ label, url, kind })) })),
-  events: (w.events ?? []).map(([when, text, url]) => ({ when, text, url })),
+  tasks: w.tasks.map(([text, links], ti) => {
+    const id = `w${wi + 1}t${ti}`;
+    return { id, text, links: links.map(([label, url, kind]) => ({ label, url, kind })), ...DETAILS[id] };
+  }),
 }));
 
 export const ALL_TASK_IDS = PLAN.flatMap((w) => w.tasks.map((t) => t.id));

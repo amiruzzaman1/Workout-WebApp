@@ -4,6 +4,8 @@ import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { AppHeader } from '../../src/components/AppHeader';
 import { hovered, smooth } from '../../src/components/ui';
 import { VoiceCommand } from '../../src/components/VoiceCommand';
+import { isOwner } from '../../src/lib/owner';
+import { useStore } from '../../src/lib/store';
 import { A, C, F, R } from '../../src/lib/theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -49,8 +51,10 @@ const tab = (title: string, on: IconName, off: IconName, color: string) => ({
 });
 
 export default function TabsLayout() {
-  // Five tabs share the width, so on a very small phone the labels get a touch smaller instead of being cut off.
-  const narrow = useWindowDimensions().width < 360;
+  // The Career tab is private to one account, so only that account gets a sixth tab and the rest see five.
+  const owner = isOwner(useStore().session);
+  // The tabs share the width, so on a small phone the labels get a touch smaller instead of being cut off.
+  const narrow = useWindowDimensions().width < (owner ? 400 : 360);
   return (
     <>
       <Tabs
@@ -69,6 +73,7 @@ export default function TabsLayout() {
         <Tabs.Screen name="progress" options={tab('Progress', 'stats-chart', 'stats-chart-outline', A.protein)} />
         <Tabs.Screen name="tracker" options={tab('Tracker', 'timer', 'timer-outline', A.core)} />
         <Tabs.Screen name="library" options={tab('Exercises', 'barbell', 'barbell-outline', A.fat)} />
+        <Tabs.Screen name="career" options={owner ? tab('Career', 'briefcase', 'briefcase-outline', A.water) : { title: 'Career', headerShown: false, tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
         {/* Your profile opens from the icon in the top left, so it has no tab of its own. */}
         <Tabs.Screen name="user" options={{ title: 'User', headerShown: false, tabBarButton: () => null, tabBarItemStyle: { display: 'none' } }} />
       </Tabs>
