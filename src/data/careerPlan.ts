@@ -3,7 +3,7 @@
 // renumbered once in use: add new tasks at the end of a week, never in the middle.
 import { A } from '../lib/theme';
 
-export const CAREER_START = '2026-10-15';
+export const CAREER_START = '2026-10-21';
 export const CAREER_WEEKS = 14;
 
 export type Phase = 'base' | 'build' | 'peak' | 'compete';
@@ -94,7 +94,7 @@ const neet: [string, string, string] = ['NeetCode roadmap', U.neet, 'site'];
 const ai103: [string, string, string] = ['AI-103 page', U.ai103, 'Microsoft'];
 
 const RAW: RawWeek[] = [
-  { phase: 'base', title: 'Hands back on the keyboard', goal: 'Python fluency, Git without thinking, and the free student perks that pay for the rest of the block.', tasks: [
+  { phase: 'base', title: 'Hands back on the keyboard', goal: 'C# fluency, Git without thinking, and the free student perks that pay for the rest of the block.', tasks: [
     ['Set up VS Code, Git and GitHub. Claim the GitHub Student Developer Pack (free Copilot and cloud credits)', [['Student Pack', U.pack, 'site']]],
     ['Claim Azure for Students: free credit, no card needed', [['Azure for Students', U.azStudents, 'Microsoft']]],
     ["Install the .NET SDK and VS Code with the C# Dev Kit, then do Microsoft's Get started with C# path and the C# tour, with every exercise", [['Get started with C#', U.csPart1, 'Microsoft'], ['C# tour', U.csTour, 'Microsoft'], ['Take your first steps with C#', U.csFirst, 'Microsoft'], ['C# beginner course', yt('Tim Corey C# beginner course'), 'YouTube']]],
@@ -112,15 +112,15 @@ const RAW: RawWeek[] = [
     ['All SQLBolt lessons', [['SQLBolt', U.sql, 'site']]],
     ['DSA: 10 problems, Two Pointers and Sliding Window', [neet]],
     GYM,
-  ] },
-  { phase: 'base', title: 'Backends and databases', goal: 'Node and FastAPI APIs on PostgreSQL, tested, on GitHub.', tasks: [
+  ], events: [['30 to 31 Oct', 'Kawaiicon, Michael Fowler Centre, Wellington. Security conference, very good for meeting Wellington engineers.', U.techevents]] },
+  { phase: 'base', title: 'Backends and databases', goal: 'An ASP.NET Core API on a real database, tested, on GitHub.', tasks: [
     ['ASP.NET Core: build a minimal API and a controller based web API', [['Minimal API tutorial', U.minApi, 'Microsoft'], ['Web API tutorial', U.webApi, 'Microsoft'], ['ASP.NET Core docs', U.aspnet, 'Microsoft'], ['ASP.NET Core course', yt('ASP.NET Core Web API full course'), 'YouTube']]],
     ['Entity Framework Core: models, migrations and relationships', [['EF Core first app', U.efcore, 'Microsoft'], ['EF Core tutorial', yt('Entity Framework Core tutorial'), 'YouTube']]],
     ['SQL: joins, indexes, transactions (T-SQL on SQL Server or Azure SQL, or PostgreSQL)', [['Querying with T-SQL', U.tsql, 'Microsoft'], ['SQLBolt', U.sql, 'site'], ['Postgres tutorial', U.pg, 'docs']]],
     ['Mini project: ASP.NET Core API on EF Core and SQL with xUnit tests, pushed to GitHub', [['Testing in .NET', U.dotnetTest, 'Microsoft']]],
     ['DSA: 10 problems, Stack and Binary Search', [neet]],
     GYM,
-  ], events: [['30 to 31 Oct', 'Kawaiicon, Michael Fowler Centre, Wellington. Security conference, very good for meeting Wellington engineers.', U.techevents]] },
+  ] },
   { phase: 'build', title: 'Ship it on Azure, and how LLMs work', goal: 'Put your week 3 API live on Azure with sign in, understand the model, and start the AI-103 path.', tasks: [
     ['Deploy the week 3 API to Azure App Service with Azure SQL', [['App Service quickstart', U.appService, 'Microsoft'], ['Container Apps docs', U.aca, 'Microsoft']]],
     ['Sign in for your API: ASP.NET Core Identity and JWT tokens', [['ASP.NET Core Identity', U.identity, 'Microsoft']]],
@@ -129,7 +129,7 @@ const RAW: RawWeek[] = [
     ['Forge: add unit tests for coach.ts and nutrition.ts, run them in GitHub Actions', [['GitHub Actions docs', U.actions, 'docs']]],
     ['DSA: 10 problems, Linked List and Trees', [neet]],
     GYM,
-  ] },
+  ], events: [['12 to 13 Nov', 'Product Aotearoa, Tākina and Te Papa, Wellington.', U.techevents], ['13 Nov', 'HackAotearoa co-working for builders, Wellington CBD. Bring project 2.', U.techevents]] },
   { phase: 'build', title: 'Retrieval (RAG)', goal: 'Start project 2: an assistant that answers from public NZ documents, such as Immigration NZ or council policy PDFs, and cites its sources.', tasks: [
     ['Generative AI for Beginners .NET, the retrieval and embeddings lessons', [['.NET course', U.genaiDotnet, 'Microsoft'], ['Python course', U.genai, 'Microsoft']]],
     ['One DeepLearning.AI short course on RAG or embeddings', [['Short courses', U.dlai, 'course']]],
@@ -137,7 +137,7 @@ const RAW: RawWeek[] = [
     ['Project 2: an ASP.NET Core API that ingests 50 or more documents and answers with citations', []],
     ['DSA: 10 problems, Trees and Heaps', [neet]],
     GYM,
-  ], events: [['12 to 13 Nov', 'Product Aotearoa, Tākina and Te Papa, Wellington.', U.techevents], ['13 Nov', 'HackAotearoa co-working for builders, Wellington CBD. Bring project 2.', U.techevents]] },
+  ] },
   { phase: 'build', title: 'Agents', goal: 'Give project 2 tools in C# and a measured quality bar.', tasks: [
     ['AI Agents for Beginners, all lessons', [['GitHub course', U.agents, 'Microsoft']]],
     ['Agents in C#: Foundry Agent Service and Semantic Kernel, tools and function calling', [['Semantic Kernel docs', U.semKernel, 'Microsoft'], ['Foundry docs', U.foundry, 'Microsoft'], ['Foundry agents walkthrough', yt('Azure AI Foundry Agent Service tutorial'), 'YouTube']]],
@@ -146,7 +146,7 @@ const RAW: RawWeek[] = [
     ['AI-103 Learn path: finish the generative AI and agents modules', [ai103]],
     ['DSA: 10 problems, Graphs', [neet]],
     GYM,
-  ], events: [['25 Nov', 'AI Engineering Summit, Auckland City Centre.', U.eventbrite]] },
+  ], events: [['25 Nov', 'AI Engineering Summit, Auckland City Centre.', U.eventbrite], ['26 Nov', 'HackerX Auckland, a hiring event. Look for the developer ticket.', U.eventbrite], ['26 to 27 Nov', 'Indigenous Tech Summit, Wellington: AI and data sovereignty.', U.techevents], ['27 Nov', 'HackAotearoa co-working, Wellington CBD.', U.techevents]] },
   { phase: 'peak', title: 'AI-103 exam prep', goal: 'Close the gaps, score well on the practice test, and book the exam.', tasks: [
     ['AI-103 Learn path: vision, language and document intelligence modules', [ai103]],
     ['Microsoft free practice assessment, 80% or more twice in a row', [['Linked on the AI-103 page', U.ai103, 'Microsoft']]],
@@ -154,7 +154,7 @@ const RAW: RawWeek[] = [
     ['Book AI-103 for week 8', []],
     ['DSA: 8 problems, mixed review', [['LeetCode', U.leet, 'site']]],
     GYM,
-  ], events: [['26 Nov', 'HackerX Auckland, a hiring event. Look for the developer ticket.', U.eventbrite], ['26 to 27 Nov', 'Indigenous Tech Summit, Wellington: AI and data sovereignty.', U.techevents], ['27 Nov', 'HackAotearoa co-working, Wellington CBD.', U.techevents]] },
+  ] },
   { phase: 'peak', title: 'Pass AI-103, ship project 2', goal: 'Certified, and project 2 running in production on Azure with a pipeline.', tasks: [
     ['Sit and pass AI-103', [ai103]],
     ['Containerise project 2 with Docker', [['Docker get started', U.docker, 'docs']]],
@@ -172,6 +172,14 @@ const RAW: RawWeek[] = [
     ['DSA: 10 problems, 1D dynamic programming', [neet]],
     GYM,
   ] },
+  { phase: 'compete', title: 'Holiday week, keep the streak', goal: 'Lighter on purpose. NZ mostly stops for Christmas, and roles posted now get fewer applicants.', tasks: [
+    ['One project 2 improvement a day', []],
+    ['One DSA problem a day', [['LeetCode', U.leet, 'site']]],
+    ['Write a blog post: how you measured RAG quality in project 2', []],
+    ['Record yourself explaining a project for 2 minutes, watch it back, redo it', []],
+    ['5 applications', [['Seek', U.seek, 'jobs']]],
+    ['Gym: 3 sessions logged in Forge', []],
+  ] },
   { phase: 'compete', title: 'Interview ready, start applying', goal: 'CV, recruiters and the first applications. Use a $73k or higher salary filter so every role also clears the visa wage line.', tasks: [
     ['Tech Interview Handbook: resume and behavioural sections', [['Tech Interview Handbook', U.tih, 'site']]],
     ['One page NZ style CV: projects first, cert name in full, work rights line', []],
@@ -180,14 +188,6 @@ const RAW: RawWeek[] = [
     ['Register with 2 tech recruiters', [['Hays', U.hays, 'jobs'], ['Randstad', U.randstad, 'jobs'], ['Robert Walters', U.rw, 'jobs'], ['Absolute IT', U.absolute, 'jobs']]],
     ['DSA: 10 problems, mixed', [['LeetCode', U.leet, 'site']]],
     GYM,
-  ] },
-  { phase: 'compete', title: 'Holiday week, keep the streak', goal: 'Lighter on purpose. NZ mostly stops for Christmas, and roles posted now get fewer applicants.', tasks: [
-    ['One project 2 improvement a day', []],
-    ['One DSA problem a day', [['LeetCode', U.leet, 'site']]],
-    ['Write a blog post: how you measured RAG quality in project 2', []],
-    ['Record yourself explaining a project for 2 minutes, watch it back, redo it', []],
-    ['5 applications', [['Seek', U.seek, 'jobs']]],
-    ['Gym: 3 sessions logged in Forge', []],
   ] },
   { phase: 'compete', title: 'Reload', goal: 'Sharpen for the January hiring restart.', tasks: [
     ['Explain both projects in 2 minutes and in 10 minutes without notes', []],
