@@ -179,7 +179,7 @@ function CareerPlan({ careerDone, setCareerTask }: { careerDone: Record<string, 
       <Eyebrow>{fmtDay(START)} 2026 to {fmtDay(new Date(weekStart(CAREER_WEEKS).getTime() - DAY))} 2027 · Tracker</Eyebrow>
       <H1>Career plan</H1>
       <P muted style={{ fontSize: 13, lineHeight: 19 }}>
-        Goal: a Software Engineer role in NZ paying $73k or more, the Skilled Migrant wage line. Azure AI-103, Python, TypeScript, PostgreSQL, Docker and GitHub Actions, with 4 gym sessions a week.
+        Goal: a Software Engineer role in NZ paying $73k or more, the Skilled Migrant wage line. C# and ASP.NET Core, Azure with the AI-103 cert, React and TypeScript, SQL, Docker and GitHub Actions, with 4 gym sessions a week.
       </P>
 
       <View style={s.hero}>
