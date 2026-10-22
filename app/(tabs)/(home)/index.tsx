@@ -54,7 +54,7 @@ export default function DashboardScreen() {
     checkGoalMilestone(coachContext.goalPct, profile?.target_weight_kg ? Number(profile.target_weight_kg) : null);
   }, [coachContext.goalPct, profile?.target_weight_kg]);
 
-  // Daily check ins and all the "come back" nudges below. No server behind these, so this just works out the
+  // The two hourly pulses and the "come back" nudges below. No server behind these, so this just works out the
   // next one each time the Dashboard is open and (re)schedules it; see src/lib/dailyNotifications.ts and
   // src/lib/notify.ts for what that means on the web versus on the phone.
   const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayStr), [tasks, todayStr]);
