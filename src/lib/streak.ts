@@ -1,7 +1,7 @@
 // How many days in a row, up to today, something has been logged: food, a workout, a weigh in or sleep.
 // Shared by the User page's badge, the Dashboard banner, and the "don't lose it" notification nudge, so the
 // three of them can never show a different number for the same thing.
-function shiftISO(day: string, days: number) {
+export function shiftISO(day: string, days: number) {
   const d = new Date(`${day}T00:00:00`);
   d.setDate(d.getDate() + days);
   const z = (n: number) => String(n).padStart(2, '0');

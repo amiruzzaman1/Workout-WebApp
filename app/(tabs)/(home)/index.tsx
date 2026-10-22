@@ -57,7 +57,6 @@ export default function DashboardScreen() {
   // Daily check ins and all the "come back" nudges below. No server behind these, so this just works out the
   // next one each time the Dashboard is open and (re)schedules it; see src/lib/dailyNotifications.ts and
   // src/lib/notify.ts for what that means on the web versus on the phone.
-  const todayLogged = useMemo(() => foodEntries.some((e) => e.eaten_on === todayStr), [foodEntries, todayStr]);
   const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayStr), [tasks, todayStr]);
   const todayUndone = todayTasks.filter((t) => !t.done).length;
   const todayDow = new Date(`${todayStr}T12:00:00`).getDay();
@@ -71,15 +70,27 @@ export default function DashboardScreen() {
     initNotifications();
     requestNotifyPermission().then((ok) => {
       if (!ok) return;
+      const mealsToday = new Set(foodEntries.filter((e) => e.eaten_on === todayStr).map((e) => e.meal));
+      const waterPct = coachContext.waterPct;
+      const waterMl = water[todayStr] ?? 0;
+      const glassesLeft = waterPct == null ? 8 : waterPct >= 1 ? 0 : waterPct > 0 ? Math.ceil(((1 - waterPct) / waterPct) * waterMl / 250) : 8;
+      const tomorrowSessions = plan ? plan.data.days.find((d) => d.day === (todayDow + 1) % 7)?.sessions ?? [] : [];
       refreshTodayNotifications({
-        todayFoodLogged: todayLogged, tasksToday: todayTasks, streak: { days: dayStreak, loggedToday: loggedSomethingToday },
-        workout: { plannedToday: todaysPlannedSessions.length > 0, sessionTitle: todaysPlannedSessions[0]?.title ?? null, doneToday: loggedDates.has(todayStr) },
-        daysSinceLastWeighIn, waterPct: coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog,
+        today: {
+          meals: { breakfast: mealsToday.has('breakfast'), lunch: mealsToday.has('lunch'), dinner: mealsToday.has('dinner') },
+          waterPct, waterGlassesLeft: glassesLeft, proteinPct: coachContext.proteinPct,
+          sleepLogged: sleep.some((x) => x.night_of === todayStr && (x.minutes != null || x.bed_time || x.wake_time)),
+          workout: { planned: todaysPlannedSessions.length > 0, done: loggedDates.has(todayStr), title: todaysPlannedSessions[0]?.title ?? null },
+          tasksLeft: todayUndone, streak: { days: dayStreak, loggedToday: loggedSomethingToday },
+        },
+        tomorrowWorkout: { planned: tomorrowSessions.length > 0, title: tomorrowSessions[0]?.title ?? null },
+        name: (profile?.display_name ?? '').trim().split(/\s+/)[0] || 'champ',
+        daysSinceLastWeighIn, daysSinceLastPhoto, daysSinceAnyLog,
       });
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [todayLogged, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
+  }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

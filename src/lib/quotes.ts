@@ -1,20 +1,9 @@
-import quotesData from '../data/quotes.json';
+import { FITNESS_QUOTES } from '../data/fitnessQuotes';
 
-// Gym friendly quotes from src/data/quotes.json, shown on the Dashboard.
-// A quote is used if it has one of these tags and none of the off topic ones.
-const WANTED = ['motivation', 'perseverance', 'growth', 'courage', 'resilience', 'change', 'success'];
-const SKIP = ['love', 'forgiveness', 'friendship', 'empathy', 'gratitude', 'humility', 'harmony', 'anger', 'fear'];
-// Inspiration is a broad tag. It only counts when the quote has none of these softer topics too.
-const SOFT = ['life', 'happiness', 'creativity', 'wisdom', 'mindfulness', 'hope', 'purpose', 'justice', 'knowledge', 'self-reflection', 'leadership', 'general', 'integrity', 'patience'];
-
-const has = (tags: string[], list: string[]) => tags.some((t) => list.includes(t));
-
-const QUOTES: { text: string; author: string }[] = (quotesData as { quote: string; author: string; length: number; tags: string[] }[])
-  // Only short ones fit the card.
-  .filter((q) => q.length <= 140 && !has(q.tags, SKIP)
-    && (has(q.tags, WANTED) || (q.tags.includes('inspiration') && !has(q.tags, SOFT))))
-  // The file marks some quotes as Unknown. Those show with no author line.
-  .map((q) => ({ text: q.quote, author: q.author === 'Unknown' ? '' : q.author }));
+// Today's Quote on the Dashboard: only quotes about training, health, discipline and grinding, hand picked in
+// src/data/fitnessQuotes.ts. (The old src/data/quotes.json pool was general life advice filtered by tag, and far
+// too much of it had nothing to do with the body or the work, so it is no longer used.)
+const QUOTES = FITNESS_QUOTES;
 
 export type Quote = (typeof QUOTES)[number];
 

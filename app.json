@@ -46,7 +46,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Forge uses your photos to let you set a profile picture."
+          "photosPermission": "Forge uses your photos to let you set a profile picture and add progress photos.",
+          "cameraPermission": "Forge uses the camera to take progress photos."
         }
       ],
       [

@@ -5,10 +5,11 @@ import Svg, { Circle } from 'react-native-svg';
 import { confirm } from '../lib/confirm';
 import { startTimerNotification, stopTimerNotification, updateTimerNotification } from '../lib/notify';
 import { fmtDuration, todayISO, visitSeconds } from '../lib/progress';
+import { shiftISO } from '../lib/streak';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
 import {
-  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmt12, fmtMinutes, hhmmOf, isTime, minutesBetween, nowClock, rangeText, Segment, segmentsOf, sleepVerdict,
+  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmt12, fmtMinutes, hhmmOf, isTime, minutesBetween, nowClock, rangeText, rawMinutesBetween, Segment, segmentsOf, sleepFix, sleepVerdict,
 } from '../lib/tracker';
 import { dayLabel } from './AppHeader';
 import { TimeField } from './TimeField';
@@ -116,48 +117,92 @@ export function useTimeCategories() {
   return { categories, addCategory };
 }
 
+/** One small pill that says whether a night's sleep is saved, and taps through to it. */
+function SleepStatus({ label, day, picked, onPick }: { label: string; day: string; picked: boolean; onPick: () => void }) {
+  const { sleep } = useStore();
+  const row = sleep.find((x) => x.night_of === day);
+  const full = row?.minutes != null;
+  const partial = !full && !!(row?.bed_time || row?.wake_time);
+  const color = full ? A.up : partial ? A.carbs : C.muted;
+  const word = full ? fmtMinutes(row!.minutes) : partial ? 'times saved, no total' : 'not logged';
+  return (
+    <Pressable onPress={onPick} accessibilityRole="button" accessibilityLabel={`${label}: ${word}`} style={(p) => [st.statusPill, smooth, { borderColor: picked ? color : C.border }, picked && { backgroundColor: color + '1f' }, hovered(p) && !picked && { backgroundColor: C.card2 }]}>
+      <Ionicons name={full ? 'checkmark-circle' : partial ? 'alert-circle' : 'ellipse-outline'} size={16} color={color} />
+      <View style={{ flexShrink: 1, minWidth: 0 }}>
+        <Text style={st.statusLabel} numberOfLines={1}>{label}</Text>
+        <Text style={[st.statusWord, { color }]} numberOfLines={1}>{word}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 /** Last night's sleep: bedtime, wake time, hours. */
 export function SleepCard({ date }: { date: string }) {
-  const { sleep, saveSleep } = useStore();
+  const { sleep, saveSleep, setDate } = useStore();
   const saved = sleep.find((s) => s.night_of === date);
   const [bed, setBed] = useState(saved?.bed_time ?? '');
   const [wake, setWake] = useState(saved?.wake_time ?? '');
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setBed(saved?.bed_time ?? '');
     setWake(saved?.wake_time ?? '');
-  }, [saved?.bed_time, saved?.wake_time]);
+    setError(null);
+  }, [saved?.bed_time, saved?.wake_time, date]);
 
-  const mins = isTime(bed) && isTime(wake) ? minutesBetween(bed, wake) : null;
+  const both = isTime(bed) && isTime(wake);
+  const mins = both ? minutesBetween(bed, wake) : null;
+  const raw = both ? rawMinutesBetween(bed, wake) : null;
+  const fix = both && mins == null ? sleepFix(bed, wake) : null;
   const savedMins = saved?.minutes ?? null;
   const verdict = savedMins ? sleepVerdict(savedMins) : null;
+  const timesButNoTotal = savedMins == null && !!(saved?.bed_time && saved?.wake_time);
+  const today = todayISO();
+  const yesterday = shiftISO(today, -1);
 
   async function save() {
+    // Both times set but they do not make a believable sleep: say so instead of saving a row with no hours.
+    if (both && mins == null) {
+      setError(`${fmt12(bed)} to ${fmt12(wake)} is ${raw ? fmtMinutes(raw) : 'not a real sleep'}. Check AM and PM, then save again.`);
+      return;
+    }
+    setError(null);
     await saveSleep({ night_of: date, bed_time: bed || null, wake_time: wake || null, minutes: mins });
     setOpen(false);
   }
 
   return (
     <Section
-      title={date === todayISO() ? 'Sleep last night' : 'Sleep the night before'}
+      title={date === today ? 'Sleep last night' : 'Sleep the night before'}
       icon="moon" color="#8f9bff"
       right={
         <Pressable onPress={() => setOpen((o) => !o)} accessibilityRole="button" style={(p) => [st.linkBtn, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
-          <Text style={st.link}>{open ? 'Close' : savedMins ? 'Edit' : 'Add'}</Text>
+          <Text style={st.link}>{open ? 'Close' : savedMins || timesButNoTotal ? 'Edit' : 'Add'}</Text>
         </Pressable>
       }
     >
+      <Row style={{ gap: 8, alignItems: 'stretch' }}>
+        <View style={{ flex: 1, minWidth: 0 }}><SleepStatus label="Last night" day={today} picked={date === today} onPick={() => setDate(today)} /></View>
+        <View style={{ flex: 1, minWidth: 0 }}><SleepStatus label="Night before" day={yesterday} picked={date === yesterday} onPick={() => setDate(yesterday)} /></View>
+      </Row>
+
       {savedMins != null && !open && (
         <Row style={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <View>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[st.big, { color: A.fat }]}>{fmtMinutes(savedMins)}</Text>
             <Text style={st.meta}>{fmt12(saved?.bed_time)} to {fmt12(saved?.wake_time)}. {verdict?.hint}</Text>
           </View>
           <Text style={[st.badge, { color: A.fat, borderColor: A.fat }]}>{verdict?.label}</Text>
         </Row>
       )}
-      {savedMins == null && !open && <P muted style={{ fontSize: 13 }}>Log when you went to bed and when you woke up. Sleep is where training turns into muscle.</P>}
+      {timesButNoTotal && !open && (
+        <View style={st.warn}>
+          <Text style={st.warnTitle}>Saved, but the total hours are missing</Text>
+          <Text style={st.meta}>{fmt12(saved?.bed_time)} to {fmt12(saved?.wake_time)} adds up to more than 16 hours, so no total was worked out. Tap Edit and check AM and PM.</Text>
+        </View>
+      )}
+      {savedMins == null && !timesButNoTotal && !open && <P muted style={{ fontSize: 13 }}>Log when you went to bed and when you woke up. Sleep is where training turns into muscle.</P>}
 
       {open && (
         <View style={{ gap: 8 }}>
@@ -175,7 +220,29 @@ export function SleepCard({ date }: { date: string }) {
             <Chip label="Bed now" icon={() => <Ionicons name="bed-outline" size={15} color={C.muted} />} onPress={() => setBed(nowClock())} />
             <Chip label="Woke now" icon={() => <Ionicons name="sunny-outline" size={15} color={C.muted} />} onPress={() => setWake(nowClock())} />
           </Row>
-          <Text style={st.meta}>{mins ? `That is ${fmtMinutes(mins)} of sleep.` : 'Type the time, then pick AM or PM, for example 11:15 PM.'}</Text>
+
+          {mins != null ? (
+            <View style={st.total}>
+              <Text style={[st.big, { color: A.fat }]}>{fmtMinutes(mins)}</Text>
+              <Text style={st.meta}>Total sleep, {fmt12(bed)} to {fmt12(wake)}. {sleepVerdict(mins).hint}</Text>
+            </View>
+          ) : both ? (
+            <View style={st.warn}>
+              <Text style={st.warnTitle}>That does not look right</Text>
+              <Text style={st.meta}>{fmt12(bed)} to {fmt12(wake)} is {raw ? fmtMinutes(raw) : 'not a real sleep'}. Check AM and PM on both times.</Text>
+              {fix && (
+                <Chip
+                  label={`Use ${fmt12(fix.value)} for ${fix.field === 'bed' ? 'bed time' : 'wake time'}`}
+                  icon={() => <Ionicons name="swap-vertical" size={15} color={C.muted} />}
+                  onPress={() => (fix.field === 'bed' ? setBed(fix.value) : setWake(fix.value))}
+                />
+              )}
+            </View>
+          ) : (
+            <Text style={st.meta}>{bed || wake ? 'Add the other time and the total shows here.' : 'Type the time, then pick AM or PM, for example 11:15 PM.'}</Text>
+          )}
+
+          {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
           <Button small icon="checkmark" title="Save sleep" onPress={save} style={{ alignSelf: 'flex-start' }} />
         </View>
       )}
@@ -667,6 +734,12 @@ const st = StyleSheet.create({
   linkBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: R.sm },
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12, lineHeight: 18 },
   big: { color: C.text, fontFamily: F.display, fontSize: 22, letterSpacing: -0.6 },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: R.md, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: C.card },
+  statusLabel: { color: C.muted, fontFamily: F.bodyMed, fontSize: 11 },
+  statusWord: { fontFamily: F.bodySemi, fontSize: 13 },
+  total: { borderWidth: 1, borderColor: C.borderStrong, borderRadius: R.md, padding: 12, gap: 2, backgroundColor: C.card },
+  warn: { borderWidth: 1, borderColor: A.carbs, borderRadius: R.md, padding: 12, gap: 6, backgroundColor: C.card, alignItems: 'flex-start' },
+  warnTitle: { color: A.carbs, fontFamily: F.bodySemi, fontSize: 13 },
   badge: { fontFamily: F.bodySemi, fontSize: 11, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 },
   running: { borderWidth: 1, borderRadius: R.lg, padding: 18, gap: 6, backgroundColor: C.card },
   clock: { color: C.inverse, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7, lineHeight: 30 },

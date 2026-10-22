@@ -44,6 +44,31 @@ export function minutesBetween(bed: string, wake: string): number | null {
   return mins > 0 && mins <= 16 * 60 ? mins : null;
 }
 
+/** Minutes from bed to wake with no upper limit, to explain why a pair of times was refused (12:31 PM to 10:31 AM is 22 hours). */
+export function rawMinutesBetween(bed: string, wake: string): number | null {
+  const a = TIME.exec(bed.trim());
+  const b = TIME.exec(wake.trim());
+  if (!a || !b) return null;
+  const start = Number(a[1]) * 60 + Number(a[2]);
+  const end = Number(b[1]) * 60 + Number(b[2]);
+  const mins = end >= start ? end - start : 24 * 60 - start + end;
+  return mins > 0 ? mins : null;
+}
+
+/** When two times do not make a believable sleep, flipping AM and PM on one of them often does (12:31 PM should have been 12:31 AM). */
+export function sleepFix(bed: string, wake: string): { field: 'bed' | 'wake'; value: string } | null {
+  const flip = (t: string) => {
+    const m = TIME.exec(t.trim());
+    return m ? `${String((Number(m[1]) + 12) % 24).padStart(2, '0')}:${m[2]}` : '';
+  };
+  const believable = (m: number | null) => m != null && m >= 3 * 60 && m <= 14 * 60;
+  const tryBed = flip(bed);
+  const tryWake = flip(wake);
+  if (tryBed && believable(minutesBetween(tryBed, wake))) return { field: 'bed', value: tryBed };
+  if (tryWake && believable(minutesBetween(bed, tryWake))) return { field: 'wake', value: tryWake };
+  return null;
+}
+
 export function fmtMinutes(min: number | null | undefined) {
   if (min == null) return '';
   const h = Math.floor(min / 60);

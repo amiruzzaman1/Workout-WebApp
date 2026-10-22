@@ -266,13 +266,15 @@ function PhotosTab() {
     signProgressPhotos(ids).then(setUrls);
   }, [progressPhotos]);
 
-  async function add() {
+  async function add(source: 'camera' | 'gallery') {
     setError(null);
     if (Platform.OS !== 'web') {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { setError('Allow photo access in your phone settings to add a progress photo.'); return; }
+      const perm = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) { setError(source === 'camera' ? 'Allow camera access in your phone settings to take a progress photo.' : 'Allow photo access in your phone settings to add a progress photo.'); return; }
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.7 });
+    // The camera goes straight into the app, so the photo never has to be saved to the gallery first.
+    const opts = { mediaTypes: ['images'] as ImagePicker.MediaType[], allowsEditing: true, quality: 0.7 };
+    const result = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
     if (result.canceled || !result.assets?.length) return;
     setBusy(true);
     try {
@@ -300,7 +302,10 @@ function PhotosTab() {
         <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 13, lineHeight: 19 }}>
           Visual change often shows up before the scale does. Only you can see these, not even a friend who also uses Forge.
         </Text>
-        <Button icon="camera-outline" title={`Add a photo for ${dayLabel(day)}`} onPress={add} loading={busy} style={{ alignSelf: 'flex-start' }} />
+        <Row style={{ gap: 8, flexWrap: 'wrap' }}>
+          <Button icon="camera-outline" title={`Take a photo for ${dayLabel(day)}`} onPress={() => add('camera')} loading={busy} />
+          <Button icon="images-outline" title="Choose from gallery" kind="secondary" onPress={() => add('gallery')} disabled={busy} />
+        </Row>
         {!!error && <Text style={{ color: A.over, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
       </Card>
 
