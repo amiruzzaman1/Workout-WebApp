@@ -1,7 +1,10 @@
 // Reminders that are not about a single day: take your medicine every day at the same time, cancel a
 // subscription on a date in the future, a birthday that comes back every year. Each is scheduled with
 // src/lib/notify.ts for whenever it is next due; see refreshReminders(), called whenever the list changes.
-import { cancelScheduled, scheduleAt } from './notify';
+import { AlarmVibration, alarmChannelId, cancelAlarmAt, cancelScheduled, scheduleAlarmAt, scheduleAt } from './notify';
+
+/** How a reminder alerts you: silently (no sound or buzz), a normal notification, or like an alarm (rings through silent mode, buzzes, repeats). */
+export type ReminderStyle = 'silent' | 'normal' | 'alarm';
 
 export type Repeat = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -12,7 +15,14 @@ export type Reminder = {
   repeat: Repeat;
   /** The day it happens (once), or the day its weekday/day of month/month and day come from (weekly/monthly/yearly). Unused for daily. */
   remind_date?: string | null; // "YYYY-MM-DD"
+  /** Missing on rows saved before schema v21, which means a normal notification. */
+  style?: ReminderStyle;
+  /** Only used when style is 'alarm': the buzz shape and how many times it rings, a few seconds apart. */
+  vibration_pattern?: Exclude<AlarmVibration, 'none'>;
+  repeat_count?: number;
 };
+
+export const STYLE_LABEL: Record<ReminderStyle, string> = { silent: 'Silent', normal: 'Notification', alarm: 'Alarm' };
 
 export const REPEAT_LABEL: Record<Repeat, string> = {
   once: 'Once',
@@ -64,8 +74,16 @@ export function nextOccurrence(r: Reminder, from = new Date()): Date | null {
 export function refreshReminders(reminders: Reminder[]) {
   for (const r of reminders) {
     const id = `reminder-${r.id}`;
+    // Clear both kinds first: switching a reminder between alarm and the others must not leave the old one behind.
+    cancelScheduled(id);
+    cancelAlarmAt(id);
     const when = nextOccurrence(r);
-    if (when) scheduleAt(id, when, 'Reminder', r.title);
-    else cancelScheduled(id);
+    if (!when) continue;
+    const style = r.style ?? 'normal';
+    if (style === 'alarm') {
+      scheduleAlarmAt(id, when, 'Reminder', r.title, alarmChannelId(r.vibration_pattern ?? 'short', true), r.repeat_count ?? 3);
+    } else {
+      scheduleAt(id, when, 'Reminder', r.title, style === 'silent' ? 'reminders-silent' : 'reminders');
+    }
   }
 }

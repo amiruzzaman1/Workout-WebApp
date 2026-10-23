@@ -251,7 +251,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ]);
     setRecipes(((rc.data ?? []) as any[]).map((r) => ({ ...r, servings: Number(r.servings), cooked_g: r.cooked_g == null ? null : Number(r.cooked_g), items: r.items ?? [] })));
     setTasks((tk.data ?? []) as TaskItem[]);
-    const { data: rmData } = await supabase.from('reminders').select('id,title,remind_time,repeat,remind_date').order('created_at', { ascending: true });
+    const { data: rmData } = await supabase.from('reminders').select('*').order('created_at', { ascending: true });
     setReminders((rmData ?? []) as Reminder[]);
     const { data: alData } = await supabase.from('alarms').select('id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled').order('created_at', { ascending: true });
     setAlarms((alData ?? []) as Alarm[]);
@@ -595,7 +595,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addReminder = useCallback(async (row: Omit<Reminder, 'id'>) => {
-    const { data, error } = await supabase.from('reminders').insert(row).select('id,title,remind_time,repeat,remind_date').single();
+    const { data, error } = await supabase.from('reminders').insert(row).select('*').single();
     if (error) throw new Error(error.message);
     setReminders((l) => [...l, data as Reminder]);
     return data as Reminder;

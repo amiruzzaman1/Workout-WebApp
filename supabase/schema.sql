@@ -484,3 +484,9 @@ drop policy if exists "own food measures" on public.food_measures;
 create policy "own food measures" on public.food_measures for all to authenticated
   using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.food_measures to authenticated;
+
+-- v21: how a regular reminder alerts you: silent, a normal notification, or like an alarm (rings through
+-- silent mode, buzzes, repeats). Existing reminders stay normal notifications.
+alter table public.reminders add column if not exists style text not null default 'normal' check (style in ('silent', 'normal', 'alarm'));
+alter table public.reminders add column if not exists vibration_pattern text not null default 'short' check (vibration_pattern in ('short', 'double', 'long'));
+alter table public.reminders add column if not exists repeat_count smallint not null default 3 check (repeat_count between 1 and 6);

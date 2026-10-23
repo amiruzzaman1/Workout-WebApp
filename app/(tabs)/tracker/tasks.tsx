@@ -6,10 +6,12 @@ import { dayLabel } from '../../../src/components/AppHeader';
 import { CalendarModal } from '../../../src/components/CalendarModal';
 import { catColor, useTimeCategories } from '../../../src/components/DayTrackers';
 import { TimeField } from '../../../src/components/TimeField';
-import { Button, Chip, Eyebrow, H1, hovered, HoverTip, Input, Label, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
+import { Button, Chip, Eyebrow, H1, hovered, HoverTip, Input, Label, P, Row, Screen, Section, smooth, Stepper } from '../../../src/components/ui';
 import { confirm } from '../../../src/lib/confirm';
 import { todayISO } from '../../../src/lib/progress';
-import { nextOccurrence, Reminder, REPEAT_LABEL, Repeat } from '../../../src/lib/reminders';
+import { nextOccurrence, Reminder, REPEAT_LABEL, Repeat, ReminderStyle, STYLE_LABEL } from '../../../src/lib/reminders';
+import { VIBRATION_LABEL } from '../../../src/lib/alarms';
+import { AlarmVibration, MAX_ALARM_REPEATS } from '../../../src/lib/notify';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
 import { fmt12, fmtMinutes, TaskItem } from '../../../src/lib/tracker';
@@ -118,10 +120,10 @@ function ReminderRow({ r, onEdit, onDelete }: { r: Reminder; onEdit: () => void;
   const color = A.core;
   return (
     <View style={[s.row, { borderTopColor: color }]}>
-      <Ionicons name={r.repeat === 'once' ? 'calendar-outline' : 'repeat'} size={18} color={color} style={{ marginRight: 2 }} />
+      <Ionicons name={r.style === 'alarm' ? 'alarm-outline' : r.style === 'silent' ? 'notifications-off-outline' : r.repeat === 'once' ? 'calendar-outline' : 'repeat'} size={18} color={color} style={{ marginRight: 2 }} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[s.title, { color: C.text }]} numberOfLines={2}>{r.title}</Text>
-        <Text style={s.meta} numberOfLines={1}>{REPEAT_LABEL[r.repeat]} · {fmtWhen(r)}</Text>
+        <Text style={s.meta} numberOfLines={1}>{REPEAT_LABEL[r.repeat]} · {fmtWhen(r)} · {STYLE_LABEL[r.style ?? 'normal']}</Text>
       </View>
       <Pressable onPress={onEdit} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Edit ${r.title}`} style={(st) => [{ padding: 5, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: color + '22' }]}>
         {(st: any) => <Ionicons name="create-outline" size={17} color={hovered(st) ? color : C.faint} />}
@@ -150,6 +152,9 @@ function ReminderForm({ initial, onCancel, onSave, onDelete }: { initial?: Remin
   const [repeat, setRepeat] = useState<Repeat>(initial?.repeat ?? 'once');
   const [date, setDate] = useState(initial?.remind_date ?? todayISO());
   const [calendar, setCalendar] = useState(false);
+  const [style, setStyle] = useState<ReminderStyle>(initial?.style ?? 'normal');
+  const [pattern, setPattern] = useState<Exclude<AlarmVibration, 'none'>>(initial?.vibration_pattern ?? 'short');
+  const [count, setCount] = useState(initial?.repeat_count ?? 3);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -160,7 +165,7 @@ function ReminderForm({ initial, onCancel, onSave, onDelete }: { initial?: Remin
     if (repeat !== 'daily' && !date) return setError('Pick a date.');
     setBusy(true);
     try {
-      await onSave({ title: name.slice(0, 100), remind_time: time, repeat, remind_date: repeat === 'daily' ? null : date });
+      await onSave({ title: name.slice(0, 100), remind_time: time, repeat, remind_date: repeat === 'daily' ? null : date, style, vibration_pattern: pattern, repeat_count: count });
     } catch (e: any) {
       setError(e?.message ?? 'Could not save. Check your connection and try again.');
       setBusy(false);
@@ -186,6 +191,23 @@ function ReminderForm({ initial, onCancel, onSave, onDelete }: { initial?: Remin
           </Pressable>
           {!!DATE_HINT[repeat] && <P muted style={{ fontSize: 12 }}>{DATE_HINT[repeat]}</P>}
           <CalendarModal visible={calendar} value={date} onPick={(d) => { setDate(d); setCalendar(false); }} onClose={() => setCalendar(false)} />
+        </>
+      )}
+      <Label>How it alerts you</Label>
+      <Row wrap style={{ gap: 6 }}>
+        {(['silent', 'normal', 'alarm'] as ReminderStyle[]).map((k) => <Chip key={k} label={STYLE_LABEL[k]} active={style === k} onPress={() => setStyle(k)} />)}
+      </Row>
+      <P muted style={{ fontSize: 12 }}>
+        {style === 'silent' ? 'Shows in your notifications with no sound or buzz.' : style === 'normal' ? "A normal notification with your phone's usual sound." : 'Rings and buzzes like an alarm, even on silent, and repeats a few times.'}
+      </P>
+      {style === 'alarm' && (
+        <>
+          <Label>Buzz</Label>
+          <Row wrap style={{ gap: 6 }}>
+            {(Object.keys(VIBRATION_LABEL) as Exclude<AlarmVibration, 'none'>[]).map((k) => <Chip key={k} label={VIBRATION_LABEL[k]} active={pattern === k} onPress={() => setPattern(k)} />)}
+          </Row>
+          <Label>Rings this many times</Label>
+          <Stepper value={count} onChange={(v) => setCount(Math.max(1, Math.min(MAX_ALARM_REPEATS, Math.round(v))))} />
         </>
       )}
       {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13, marginTop: 6 }}>{error}</Text>}

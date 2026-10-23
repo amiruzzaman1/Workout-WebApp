@@ -34,6 +34,13 @@ export async function initNotifications() {
     sound: 'default',
     vibrationPattern: [0, 200, 100, 200],
   });
+  // A reminder set to Silent: shows in the notification shade, no sound, no buzz, no pop up banner.
+  await Notifications.setNotificationChannelAsync('reminders-silent', {
+    name: 'Silent reminders',
+    importance: Notifications.AndroidImportance.LOW,
+    sound: null,
+    enableVibrate: false,
+  });
   await Notifications.setNotificationChannelAsync('timer', {
     name: 'Timer running',
     importance: Notifications.AndroidImportance.LOW,
