@@ -2,7 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { allExercises, Exercise, groupOf, isAvailable, MUSCLE_GROUPS, needsLabel, titleCase } from '../lib/exercises';
+import { allExercises, Exercise, groupOf, isAvailable, MUSCLE_GROUPS, titleCase } from '../lib/exercises';
+import { describe, scoreExercise } from '../lib/exerciseSearch';
 import { useStore } from '../lib/store';
 import { C, GROUP_COLORS } from '../lib/theme';
 import { GroupIcon } from './GroupIcon';
@@ -23,15 +24,18 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
   const [includeStretch, setIncludeStretch] = useState(true);
 
   const list = useMemo(() => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const searching = q.trim().length > 0;
     const muscles = group ? MUSCLE_GROUPS[group] : null;
     return allExercises()
       .filter((e) => (includeStretch ? true : e.category !== 'stretching'))
       .filter((e) => (muscles ? e.primary.some((m) => muscles.includes(m)) : true))
       .filter((e) => (beginnerOnly ? e.level === 'beginner' : true))
       .filter((e) => (view === 'mine') === isAvailable(e, equipment))
-      .filter((e) => words.every((w) => e.name.toLowerCase().includes(w)))
-      .sort((a, b) => Number(!!b.custom) - Number(!!a.custom) || LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name));
+      .map((e) => ({ e, score: searching ? scoreExercise(e, q) : 1 }))
+      .filter((x) => x.score > 0)
+      // Searching ranks by how well it matches; browsing keeps beginner friendly exercises first.
+      .sort((a, b) => (searching ? b.score - a.score : 0) || Number(!!b.e.custom) - Number(!!a.e.custom) || LEVELS.indexOf(a.e.level) - LEVELS.indexOf(b.e.level) || a.e.name.localeCompare(b.e.name))
+      .map((x) => x.e);
     // customExercises in deps so new ones show up
   }, [q, group, view, beginnerOnly, includeStretch, equipment, customExercises]);
 
@@ -56,7 +60,7 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
           {/* search */}
           <View>
             <Ionicons name="search" size={18} color={C.muted} style={{ position: 'absolute', left: 13, top: 15, zIndex: 1 }} />
-            <Input placeholder="Search exercises" value={q} onChangeText={setQ} style={{ paddingLeft: 40 }} accessibilityLabel="Search exercises" />
+            <Input placeholder="Search: a name, a muscle (belly, bum, back of legs) or a machine" value={q} onChangeText={setQ} style={{ paddingLeft: 40 }} accessibilityLabel="Search exercises" />
           </View>
 
           {/* muscle group */}
@@ -96,7 +100,7 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
           onPress={() => onPick(item)}
           left={<ExerciseThumb exercise={item} />}
           title={item.name}
-          subtitle={`${item.custom ? 'My exercise · ' : ''}${item.primary.map(titleCase).join(', ')} · ${view === 'archive' ? 'Needs ' + needsLabel(item) : titleCase(item.equipment)} · ${titleCase(item.level)}`}
+          subtitle={`${describe(item)} ${titleCase(item.level)}.`}
           right={<Ionicons name="chevron-forward" size={18} color={C.muted} />}
         />
       )}

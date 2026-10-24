@@ -1,15 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CardioFields } from '../../../../../src/components/CardioFields';
+import { ExerciseList } from '../../../../../src/components/ExerciseList';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { Button, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, smooth } from '../../../../../src/components/ui';
-import { cardioKind, whoFrom } from '../../../../../src/lib/cardio';
-import { getExercise, groupOf } from '../../../../../src/lib/exercises';
+import { cardioKind, estimateCardio, whoFrom } from '../../../../../src/lib/cardio';
+import { Exercise, getExercise, groupOf } from '../../../../../src/lib/exercises';
 import { groupColor } from '../../../../../src/lib/groups';
-import { DAY_NAMES, METRIC_SHORT, metricFor, PlanItem } from '../../../../../src/lib/planner';
+import { DAY_NAMES, METRIC_SHORT, metricFor, PlanItem, uid } from '../../../../../src/lib/planner';
 import {
   defaultUnit, fmtDuration, fmtWeight, LogRow, parseRange, secondsByDate, sessionsFor, suggest, todayISO, Unit, visitSeconds, workingWeight,
 } from '../../../../../src/lib/progress';
@@ -31,6 +32,7 @@ export default function WorkoutScreen() {
   const today = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : todayISO();
   const isToday = today === todayISO();
 
+  const [adding, setAdding] = useState(false);
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -64,6 +66,21 @@ export default function WorkoutScreen() {
         ? { ...d, sessions: d.sessions.map((s, i) => (i === idx ? { ...s, items: s.items.map((it) => (it.uid === u ? { ...it, ...changes } : it)) } : s)) }
         : d)),
     }).catch(() => {});
+  };
+  // Adds an exercise to the end of this session (saved in the plan, so it is there next week too until you remove it).
+  const addExercise = (e: Exercise) => {
+    if (!plan) return;
+    const m = metricFor(e.id);
+    const item: PlanItem = {
+      uid: uid(), exerciseId: e.id, phase: 'main', metric: m, sets: m === 'minutes' ? 1 : 3,
+      reps: m === 'reps' ? '10-12' : m === 'seconds' ? '30-45' : '20', restSec: m === 'reps' ? 75 : 45,
+      cardio: cardioKind(e.id) ? estimateCardio(e.id, 'steady', who.age) : undefined,
+    };
+    savePlan({
+      ...plan.data,
+      days: plan.data.days.map((d) => (d.day === day ? { ...d, sessions: d.sessions.map((s, i) => (i === idx ? { ...s, items: [...s.items, item] } : s)) } : d)),
+    }).catch(() => {});
+    setAdding(false);
   };
   const ensureTimer = () => { if (isToday && !activeVisit) startVisit(session.title); };
   async function finish() {
@@ -137,8 +154,19 @@ export default function WorkoutScreen() {
           <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} who={who} onChangeItem={changeItem} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
         ))}
 
+        <Button kind="secondary" icon="add-circle-outline" title="Add an exercise" onPress={() => setAdding(true)} style={{ marginTop: 18 }} />
         <Button icon="flag" title={isToday && activeVisit ? `Finish workout · ${fmtDuration(visitSeconds(activeVisit, now))}` : 'Finish workout'} onPress={finish} style={{ marginTop: 24 }} />
       </Screen>
+
+      <Modal visible={adding} animationType="slide" onRequestClose={() => setAdding(false)}>
+        <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: 12 }}>
+          <Row style={{ paddingHorizontal: 16, justifyContent: 'space-between', width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+            <Text style={{ color: C.text, fontSize: 18, fontFamily: F.display }}>Add an exercise</Text>
+            <Button small kind="secondary" icon="close" title="Cancel" onPress={() => setAdding(false)} />
+          </Row>
+          <ExerciseList onPick={addExercise} />
+        </View>
+      </Modal>
 
       {rest && (
         <View style={[st.restBar, { paddingBottom: insets.bottom + 14 }]}>
