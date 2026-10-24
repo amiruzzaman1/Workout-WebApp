@@ -6,6 +6,8 @@
 
 export type CardioKind = 'treadmill' | 'bike' | 'cross' | 'rower' | 'stairs' | 'rope';
 export type Intensity = 'easy' | 'steady' | 'hard';
+/** Treadmill style: a steady walk, jog or run, or intervals that alternate fast and easy. */
+export type TreadMode = 'walk' | 'jog' | 'run' | 'intervals';
 
 /** Your own final numbers. Anything left out falls back to the estimate. */
 export type CardioPlan = {
@@ -17,6 +19,13 @@ export type CardioPlan = {
   kcal?: number;       // only used when kcalManual is true
   kcalManual?: boolean;
   intensity?: Intensity;
+  // Treadmill only
+  mode?: TreadMode;
+  distanceKm?: number;   // only used when distanceManual is true
+  distanceManual?: boolean;
+  fastKmh?: number;      // intervals: the fast part
+  fastMin?: number;      // intervals: minutes fast
+  easyMin?: number;      // intervals: minutes easy (at speedKmh)
 };
 
 const KIND: Record<string, CardioKind> = {
@@ -35,6 +44,16 @@ export function cardioKind(exerciseId: string): CardioKind | null {
 export const KIND_LABEL: Record<CardioKind, string> = {
   treadmill: 'Treadmill', bike: 'Bike', cross: 'Cross trainer', rower: 'Rower', stairs: 'Stair climber', rope: 'Skipping rope',
 };
+export const MODE_LABEL: Record<TreadMode, string> = { walk: 'Walk', jog: 'Jog', run: 'Run', intervals: 'Intervals' };
+
+/** Speed and incline to start from when you pick a treadmill style. */
+export const MODE_DEFAULTS: Record<TreadMode, Partial<CardioPlan>> = {
+  walk: { speedKmh: 5.5, incline: 6, hrLow: undefined },
+  jog: { speedKmh: 7, incline: 1 },
+  run: { speedKmh: 9, incline: 1 },
+  intervals: { speedKmh: 4.5, incline: 2, fastKmh: 8, fastMin: 1, easyMin: 2 },
+};
+
 export const LEVEL_LABEL: Record<CardioKind, string> = {
   treadmill: '', bike: 'Resistance level', cross: 'Resistance level', rower: 'Damper (1 to 10)', stairs: 'Level', rope: '',
 };
@@ -87,6 +106,35 @@ export function estimateCardio(exerciseId: string, intensity: Intensity, age: nu
   return { ...base, level: d.level };
 }
 
+/** ACSM walking equation up to about 6.4 km/h, running equation above it. Net of resting (3.5). */
+function treadKcal(speedKmh: number, inclinePct: number, minutes: number, kg: number): number {
+  const mPerMin = (speedKmh * 1000) / 60;
+  const grade = inclinePct / 100;
+  const vo2 = speedKmh <= 6.4 ? 0.1 * mPerMin + 1.8 * mPerMin * grade : 0.2 * mPerMin + 0.9 * mPerMin * grade;
+  return (vo2 * kg * 5 * minutes) / 1000;
+}
+
+/** Share of an interval session spent on the fast part. */
+function fastShare(plan: CardioPlan): number {
+  const fast = plan.fastMin ?? 1;
+  const easy = plan.easyMin ?? 2;
+  return fast + easy > 0 ? fast / (fast + easy) : 0;
+}
+
+/** The average treadmill speed over the session, which for intervals mixes the fast and easy parts. */
+export function averageSpeed(plan: CardioPlan | undefined, intensity: Intensity = 'steady'): number {
+  const base = plan?.speedKmh ?? DEFAULTS.treadmill[intensity].speed ?? 5;
+  if (plan?.mode !== 'intervals') return base;
+  const f = fastShare(plan);
+  return f * (plan.fastKmh ?? 8) + (1 - f) * base;
+}
+
+/** Distance in km for a treadmill session: what you typed, or minutes times the average speed. */
+export function distanceFor(minutes: number, plan?: CardioPlan): number {
+  if (plan?.distanceManual && Number.isFinite(plan.distanceKm)) return Math.round((plan.distanceKm as number) * 100) / 100;
+  return Math.round((averageSpeed(plan, plan?.intensity) * minutes / 60) * 100) / 100;
+}
+
 /** Extra calories burned for `minutes` of this exercise, from the plan's numbers (or the estimate where missing). */
 export function kcalFor(exerciseId: string, minutes: number, who: Who, plan?: CardioPlan): number {
   if (!(minutes > 0)) return 0;
@@ -97,11 +145,12 @@ export function kcalFor(exerciseId: string, minutes: number, who: Who, plan?: Ca
   if (k === 'treadmill') {
     const d = DEFAULTS.treadmill[intensity];
     const speed = plan?.speedKmh ?? d.speed ?? 5;
-    const grade = (plan?.incline ?? d.incline ?? 0) / 100;
-    const mPerMin = (speed * 1000) / 60;
-    // ACSM walking equation up to about 6.4 km/h, running equation above it. Net of resting (3.5).
-    const vo2 = speed <= 6.4 ? 0.1 * mPerMin + 1.8 * mPerMin * grade : 0.2 * mPerMin + 0.9 * mPerMin * grade;
-    return Math.round((vo2 * who.weightKg * 5 * minutes) / 1000);
+    const incline = plan?.incline ?? d.incline ?? 0;
+    if (plan?.mode === 'intervals') {
+      const f = fastShare(plan);
+      return Math.round(f * treadKcal(plan.fastKmh ?? 8, incline, minutes, who.weightKg) + (1 - f) * treadKcal(speed, incline, minutes, who.weightKg));
+    }
+    return Math.round(treadKcal(speed, incline, minutes, who.weightKg));
   }
   // Machines with a level: the MET moves a little with the level you pick, around the default for that effort.
   const d = DEFAULTS[k][intensity];
@@ -123,7 +172,7 @@ export function cardioSummary(exerciseId: string, minutes: number, who: Who, pla
   const parts: string[] = [];
   if (k === 'treadmill') {
     const p = plan?.speedKmh != null ? plan : { ...estimateCardio(exerciseId, plan?.intensity ?? 'steady', who.age), ...plan };
-    parts.push(`${p.speedKmh} km/h`, `${p.incline ?? 0}% incline`);
+    parts.push(plan?.mode === 'intervals' ? `${plan.fastMin ?? 1} min at ${plan.fastKmh ?? 8}, ${plan.easyMin ?? 2} min at ${p.speedKmh} km/h` : `${p.speedKmh} km/h`, `${p.incline ?? 0}% incline`, `${distanceFor(minutes, plan)} km`);
   } else if (k && k !== 'rope') {
     const lvl = plan?.level ?? estimateCardio(exerciseId, plan?.intensity ?? 'steady', who.age).level;
     parts.push(`${LEVEL_LABEL[k].toLowerCase().replace(' (1 to 10)', '')} ${lvl}`);

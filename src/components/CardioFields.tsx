@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { cardioKind, estimateCardio, heartTarget, Intensity, kcalFor, LEVEL_LABEL, Who } from '../lib/cardio';
+import { cardioKind, distanceFor, estimateCardio, heartTarget, Intensity, kcalFor, LEVEL_LABEL, MODE_DEFAULTS, MODE_LABEL, TreadMode, Who } from '../lib/cardio';
 import { PlanItem } from '../lib/planner';
 import { A, C, F } from '../lib/theme';
 import { Button, Chip, Input, Label, Row } from './ui';
@@ -58,24 +58,41 @@ export function CardioFields({ item, who, onChange }: { item: PlanItem; who: Who
           <Chip key={k} label={label} active={effort === k} onPress={() => onChange({ cardio: { ...estimateCardio(item.exerciseId, k, who.age), intensity: k } })} />
         ))}
       </Row>
+      {kind === 'treadmill' && (
+        <Row wrap style={{ gap: 6 }}>
+          <Text style={{ color: C.muted, fontFamily: F.body, fontSize: 12, marginRight: 4 }}>Style</Text>
+          {(Object.keys(MODE_LABEL) as TreadMode[]).map((m) => (
+            <Chip key={m} label={MODE_LABEL[m]} active={(c.mode ?? (est.speedKmh && est.speedKmh >= 9 ? 'run' : est.speedKmh && est.speedKmh >= 7 ? 'jog' : 'walk')) === m}
+              onPress={() => onChange({ cardio: { ...c, mode: m, ...MODE_DEFAULTS[m], distanceManual: false, distanceKm: undefined, kcalManual: false, kcal: undefined } })} />
+          ))}
+        </Row>
+      )}
       <Row wrap style={{ gap: 10 }}>
         <NumField label="Minutes" value={minutes || undefined} onCommit={(n) => onChange({ reps: String(n ?? 0), metric: 'minutes' })} />
         {kind === 'treadmill' && <NumField label="Speed (km/h)" value={c.speedKmh ?? est.speedKmh} onCommit={(n) => set({ speedKmh: n })} />}
         {kind === 'treadmill' && <NumField label="Incline (%)" value={c.incline ?? est.incline} onCommit={(n) => set({ incline: n })} />}
+        {kind === 'treadmill' && <NumField label={c.distanceManual ? 'Distance km (yours)' : 'Distance km (estimate)'} value={distanceFor(minutes, c)} onCommit={(n) => set(n == null ? { distanceManual: false, distanceKm: undefined } : { distanceKm: n, distanceManual: true })} />}
         {LEVEL_LABEL[kind] !== '' && <NumField label={LEVEL_LABEL[kind]} value={c.level ?? est.level} onCommit={(n) => set({ level: n })} />}
       </Row>
+      {kind === 'treadmill' && c.mode === 'intervals' && (
+        <Row wrap style={{ gap: 10 }}>
+          <NumField label="Fast speed (km/h)" value={c.fastKmh ?? 8} onCommit={(n) => set({ fastKmh: n })} />
+          <NumField label="Fast minutes" value={c.fastMin ?? 1} onCommit={(n) => set({ fastMin: n })} />
+          <NumField label="Easy minutes" value={c.easyMin ?? 2} onCommit={(n) => set({ easyMin: n })} />
+        </Row>
+      )}
       <Row wrap style={{ gap: 10 }}>
         <NumField label="Heart rate low (bpm)" value={hrLo} onCommit={(n) => set({ hrLow: n, hrHigh: c.hrHigh ?? hrHi })} />
         <NumField label="Heart rate high (bpm)" value={hrHi} onCommit={(n) => set({ hrHigh: n, hrLow: c.hrLow ?? hrLo })} />
         <NumField label={c.kcalManual ? 'Calories (yours)' : 'Calories (estimate)'} value={kcal} onCommit={(n) => set(n == null ? { kcalManual: false, kcal: undefined } : { kcal: n, kcalManual: true })} />
       </Row>
-      {(c.kcalManual || c.hrLow || c.speedKmh != null || c.incline != null || c.level != null) && (
+      {(c.kcalManual || c.hrLow || c.speedKmh != null || c.incline != null || c.level != null || c.mode || c.distanceManual) && (
         <Row>
           <Button small kind="secondary" icon="refresh" title="Back to estimates" onPress={() => onChange({ cardio: { ...estimateCardio(item.exerciseId, effort, who.age), intensity: effort } })} />
         </Row>
       )}
       <Text style={{ color: A.cardio, fontFamily: F.body, fontSize: 12 }}>
-        Estimated for {Math.round(who.weightKg)} kg and age {who.age}. Calories are the extra ones you burn. Change any box to use your own number.
+        Estimated for {Math.round(who.weightKg)} kg and age {who.age}. Calories are the extra ones you burn, so the treadmill screen will read higher. Change any box to use your own number.
       </Text>
     </View>
   );

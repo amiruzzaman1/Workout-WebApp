@@ -96,7 +96,7 @@ export default function SessionEditor() {
           const alts = swapOpen === it.uid ? alternativesFor(it, equipment) : [];
           return (
             <Card key={it.uid} style={{ borderLeftWidth: 3, borderLeftColor: e ? groupColor(groupOf(e)) : C.border }}>
-              <Pressable onPress={() => e && router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" style={(p) => [{ flexDirection: 'row', gap: 12, alignItems: 'center', borderRadius: 8 }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
+              <Pressable onPress={() => e && router.push(`/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" style={(p) => [{ flexDirection: 'row', gap: 12, alignItems: 'center', borderRadius: 8 }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
                 {e && <ExerciseThumb exercise={e} />}
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId}</Text>

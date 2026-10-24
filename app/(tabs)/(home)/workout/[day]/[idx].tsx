@@ -238,7 +238,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
 
   return (
     <View style={st.block}>
-      <Pressable onPress={() => router.push(`/library/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" accessibilityLabel={`How to do ${e.name}`} style={(p) => [{ flexDirection: 'row', gap: 14, alignItems: 'center', borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card }]}>
+      <Pressable onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" accessibilityLabel={`How to do ${e.name}`} style={(p) => [{ flexDirection: 'row', gap: 14, alignItems: 'center', borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card }]}>
         <ExerciseThumb exercise={e} size={compact ? 44 : 56} />
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={[st.idx, { color: groupColor(groupOf(e)) }]}>
