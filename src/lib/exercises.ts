@@ -1,5 +1,5 @@
 import raw from '../data/exercises.json';
-import { EQUIPMENT_TO_KEY, EXERCISE_TO_MACHINE } from '../data/machines';
+import { EQUIPMENT_TO_KEY, EXERCISE_NEEDS, EXERCISE_TO_MACHINE } from '../data/machines';
 
 export type Exercise = {
   id: string;
@@ -67,6 +67,7 @@ export function titleCase(s: string) {
 export function requiredKey(e: Exercise): string | null | 'unknown' {
   if (e.custom) return null;
   if (e.category === 'stretching') return null; // mobility work needs no kit
+  if (e.id in EXERCISE_NEEDS) return EXERCISE_NEEDS[e.id];
   if (EXERCISE_TO_MACHINE[e.id]) return EXERCISE_TO_MACHINE[e.id];
   if (e.equipment in EQUIPMENT_TO_KEY) return EQUIPMENT_TO_KEY[e.equipment];
   return 'unknown';

@@ -45,7 +45,7 @@ export const MACHINES: Machine[] = [
       'Letting the knees cave inwards. Push them out in line with your toes.',
     ],
     tip: 'Feet higher on the plate = more glutes/hamstrings; lower = more quads.',
-    exercises: ['Leg_Press', 'Narrow_Stance_Leg_Press', 'Calf_Press_On_The_Leg_Press_Machine'],
+    exercises: ['Leg_Press', 'Narrow_Stance_Leg_Press', 'Calf_Press_On_The_Leg_Press_Machine', 'Calf_Press'],
     jetts: true,
   },
   {
@@ -207,7 +207,7 @@ export const MACHINES: Machine[] = [
       'Let them come back slowly until you feel a light stretch in the chest.',
     ],
     mistakes: ['Seat too low or high (handles at your neck or belly).', 'Shoulders rolling forward off the pad.'],
-    exercises: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Leverage_Incline_Chest_Press'],
+    exercises: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Leverage_Incline_Chest_Press', 'Leverage_Decline_Chest_Press'],
     jetts: true,
   },
   {
@@ -424,7 +424,7 @@ export const MACHINES: Machine[] = [
     ],
     tip: 'The yellow catches slide up and down the numbered rails. Twist them to lock the bar at a height and twist the other way to release it. A flat bench sits in the middle for bench presses.',
     mistakes: ['Forgetting to set the safety stoppers.', 'Feet directly under the bar for squats. Step them slightly forward.'],
-    exercises: ['Smith_Machine_Squat', 'Smith_Machine_Bench_Press', 'Smith_Machine_Incline_Bench_Press', 'Smith_Machine_Overhead_Shoulder_Press', 'Smith_Machine_Calf_Raise'],
+    exercises: ['Smith_Machine_Squat', 'Smith_Machine_Bench_Press', 'Smith_Machine_Incline_Bench_Press', 'Smith_Machine_Overhead_Shoulder_Press', 'Smith_Machine_Calf_Raise', 'Decline_Smith_Press', 'Smith_Machine_Bent_Over_Row', 'Smith_Machine_Close-Grip_Bench_Press', 'Smith_Machine_Decline_Press', 'Smith_Machine_Hip_Raise', 'Smith_Machine_One-Arm_Upright_Row', 'Smith_Machine_Pistol_Squat', 'Smith_Machine_Reverse_Calf_Raises', 'Smith_Machine_Stiff-Legged_Deadlift', 'Smith_Machine_Upright_Row', 'Smith_Single-Leg_Split_Squat', 'Smith_Machine_Behind_the_Back_Shrug'],
     jetts: true,
   },
 
@@ -496,7 +496,7 @@ export const MACHINES: Machine[] = [
     setup: ['Hold the side rails, press Start on a low level (3 to 5). Know where the red emergency stop button is before you start.'],
     howTo: ['Step with your whole foot on each stair, stand tall.', 'Hold rails lightly for balance only.'],
     mistakes: ['Leaning your weight onto the rails.', 'Starting too fast. 5 to 10 minutes is plenty at first.'],
-    exercises: ['Stairmaster', 'Step_Mill'],
+    exercises: ['Stairmaster', 'Step_Mill', 'Power_Stairs'],
     jetts: true,
   },
 
@@ -609,7 +609,7 @@ export const MACHINES: Machine[] = [
       'Going too heavy too soon. Start with the empty bar.',
     ],
     tip: 'The pull up bar across the top is good for pull ups and chin ups. Ask a staff member to watch your first few squats if you are unsure.',
-    exercises: ['Barbell_Squat', 'Front_Barbell_Squat', 'Box_Squat', 'Barbell_Deadlift', 'Romanian_Deadlift', 'Standing_Military_Press', 'Barbell_Lunge', 'Pullups'],
+    exercises: ['Barbell_Squat', 'Front_Barbell_Squat', 'Box_Squat', 'Barbell_Deadlift', 'Romanian_Deadlift', 'Standing_Military_Press', 'Barbell_Lunge', 'Pullups', 'Inverted_Row'],
     jetts: true,
   },
   {
@@ -682,7 +682,7 @@ export const MACHINES: Machine[] = [
     ],
     howTo: ['Sit or lie with your back and head fully supported, feet flat on the floor, then start the movement.'],
     mistakes: ['Not checking the pin has locked.', 'Leaving it at a weird angle for the next person.'],
-    exercises: ['Dumbbell_Bench_Press', 'Incline_Dumbbell_Press', 'Seated_Dumbbell_Press', 'Incline_Dumbbell_Curl', 'One-Arm_Dumbbell_Row', 'Decline_Crunch'],
+    exercises: ['Dumbbell_Bench_Press', 'Incline_Dumbbell_Press', 'Seated_Dumbbell_Press', 'Incline_Dumbbell_Curl', 'One-Arm_Dumbbell_Row', 'Decline_Crunch', 'Weighted_Bench_Dip'],
     jetts: true,
   },
   {
@@ -720,7 +720,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Swinging or kicking to get up.', 'Dropping fast on the way down.'],
     tip: 'If you cannot do a pull up yet, hold the top position or lower yourself slowly (negatives). It works.',
-    exercises: ['Pullups', 'Chin-Up', 'Dips_-_Triceps_Version', 'Knee_Hip_Raise_On_Parallel_Bars', 'Hanging_Leg_Raise'],
+    exercises: ['Pullups', 'Chin-Up', 'Dips_-_Triceps_Version', 'Knee_Hip_Raise_On_Parallel_Bars', 'Hanging_Leg_Raise', 'Dips_-_Chest_Version', 'Parallel_Bar_Dip', 'Weighted_Pull_Ups', 'Scapular_Pull-Up', 'Mixed_Grip_Chin'],
     jetts: true,
   },
   {
@@ -736,7 +736,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Jumping onto a box that is too high.', 'Landing on your toes with straight legs.', 'Jumping off backwards.'],
     tip: 'As a beginner, do step ups before jumps. They train the same muscles with much less risk.',
-    exercises: ['Dumbbell_Step_Ups', 'Step-up_with_Knee_Raise', 'Front_Box_Jump', 'Box_Squat', 'Lateral_Box_Jump'],
+    exercises: ['Dumbbell_Step_Ups', 'Step-up_with_Knee_Raise', 'Front_Box_Jump', 'Box_Squat', 'Lateral_Box_Jump', 'Box_Jump_Multiple_Response', 'Box_Skip', 'Single-Leg_High_Box_Squat', 'Side_to_Side_Box_Shuffle'],
     jetts: true,
   },
   {
@@ -748,7 +748,7 @@ export const MACHINES: Machine[] = [
     setup: ['Take only what you need and return plates to their tree or rack when finished.'],
     howTo: ['For a plate raise or twist, hold one plate with both hands and move it slowly under control.'],
     mistakes: ['Leaving plates loaded on the machines. There is a sign asking everyone to remove them after use.'],
-    exercises: ['Front_Plate_Raise', 'Plate_Twist', 'Plate_Pinch'],
+    exercises: ['Front_Plate_Raise', 'Plate_Twist', 'Plate_Pinch', 'Reverse_Plate_Curls', 'Standing_Olympic_Plate_Hand_Squeeze'],
     jetts: true,
   },
   {
@@ -760,7 +760,7 @@ export const MACHINES: Machine[] = [
     setup: ['Check the band for cracks before you use it.', 'Anchor it to something solid, or hold it with both hands.'],
     howTo: ['Pull apart: hold the band at chest height and pull your hands out to the sides, squeezing your shoulder blades.', 'Assisted pull up: loop it over the bar and put a knee or foot in the bottom.'],
     mistakes: ['Letting the band snap back.', 'Using a frayed band.'],
-    exercises: ['Band_Pull_Apart', 'Band_Assisted_Pull-Up', 'External_Rotation_with_Band', 'Band_Good_Morning', 'Lateral_Raise_-_With_Bands'],
+    exercises: ['Band_Pull_Apart', 'Band_Assisted_Pull-Up', 'External_Rotation_with_Band', 'Band_Good_Morning', 'Lateral_Raise_-_With_Bands', 'Seated_Band_Hamstring_Curl', 'Weighted_Sit-Ups_-_With_Bands'],
     jetts: true,
   },
   {
@@ -887,7 +887,7 @@ export const MACHINES: Machine[] = [
     setup: ['Attach it to a strong anchor, check it is secure, and shorten or lengthen the straps for the exercise.'],
     howTo: ['Row: lean back holding the handles with arms straight, then pull your chest to your hands. The more horizontal you are, the harder it is.'],
     mistakes: ['Using an anchor that is not secure.', 'Letting your hips sag.'],
-    exercises: ['Suspended_Row', 'Suspended_Push-Up', 'Suspended_Split_Squat', 'Suspended_Fallout'],
+    exercises: ['Suspended_Row', 'Suspended_Push-Up', 'Suspended_Split_Squat', 'Suspended_Fallout', 'Inverted_Row_with_Straps', 'Suspended_Reverse_Crunch'],
     jetts: true,
   },
 ];
@@ -916,6 +916,20 @@ for (const m of MACHINES) {
   if (m.kind === 'free') continue;
   for (const id of m.exercises) EXERCISE_TO_MACHINE[id] = m.key;
 }
+// Exercises the library files under "other" or "machine" that this gym's kit can do. Free kind guides do not
+// feed EXERCISE_TO_MACHINE (that would take over exercises from accounts that never ticked the new guide), so
+// these are listed here instead. null means no kit needed.
+export const EXERCISE_NEEDS: Record<string, string | null> = {
+  'Dips_-_Chest_Version': 'pullup_bar', 'Parallel_Bar_Dip': 'pullup_bar', 'Weighted_Pull_Ups': 'pullup_bar',
+  'Scapular_Pull-Up': 'pullup_bar', 'Mixed_Grip_Chin': 'pullup_bar',
+  'Box_Jump_Multiple_Response': 'plyo_boxes', 'Box_Skip': 'plyo_boxes', 'Single-Leg_High_Box_Squat': 'plyo_boxes', 'Side_to_Side_Box_Shuffle': 'plyo_boxes',
+  'Inverted_Row': 'power_rack', 'Inverted_Row_with_Straps': 'suspension_trainer', 'Suspended_Reverse_Crunch': 'suspension_trainer',
+  'Seated_Band_Hamstring_Curl': 'bands', 'Weighted_Sit-Ups_-_With_Bands': 'bands',
+  'Reverse_Plate_Curls': 'weight_plates', 'Standing_Olympic_Plate_Hand_Squeeze': 'weight_plates',
+  'Weighted_Bench_Dip': 'bench',
+  'Mountain_Climbers': null, 'Bodyweight_Walking_Lunge': null, 'Decline_Push-Up': null, 'Chair_Squat': null,
+};
+
 // A few exercises need extra kit not captured by the generic mapping.
 EXERCISE_TO_MACHINE['Pullups'] = 'pullup_bar';
 EXERCISE_TO_MACHINE['Chin-Up'] = 'pullup_bar';
