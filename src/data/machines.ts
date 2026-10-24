@@ -49,6 +49,25 @@ export const MACHINES: Machine[] = [
     jetts: true,
   },
   {
+    key: 'omni_leg_press',
+    name: 'Omni Leg Press',
+    kind: 'free',
+    muscles: ['quadriceps', 'glutes', 'hamstrings'],
+    summary: 'Synergy selectorized leg press with a weight stack (2 to 23 on the plates) and a pad you press away. The label shows two ways to use it: a seated leg press and a horizontal one. Easier to set up than the plate loaded leg press.',
+    setup: [
+      'Choose the weight with the yellow pin in the stack. Start light.',
+      'Adjust the seat and back rest so your knees are bent about 90 degrees with your feet flat on the platform.',
+      'Sit with your back and head against the pad, hold the side handles.',
+    ],
+    howTo: [
+      'Press through your whole foot until your legs are nearly straight, but do not lock your knees.',
+      'Bend your knees slowly to return, stopping before your lower back lifts.',
+    ],
+    mistakes: ['Locking the knees at the top.', 'Letting your knees cave inward.', 'Going so deep that your hips curl up.'],
+    exercises: ['Leg_Press'],
+    jetts: true,
+  },
+  {
     key: 'leg_extension',
     name: 'Leg Extension',
     kind: 'machine',
@@ -216,7 +235,7 @@ export const MACHINES: Machine[] = [
     name: 'Lat Pulldown',
     kind: 'cable',
     muscles: ['lats', 'biceps', 'middle back'],
-    summary: 'Seated machine where you pull a bar down to your chest. Builds the back until you can do pull-ups.',
+    summary: 'Synergy lat pulldown: a long bar hangs from the top pulley, with thigh rollers to lock your legs in. A triangle (V) grip and other handles sit nearby for variations. Builds the back until you can do pull ups.',
     setup: [
       'Adjust the thigh pad so your legs are locked in snugly.',
       'Stand up, grab the bar a bit wider than shoulder-width, and sit down holding it.',
@@ -253,18 +272,23 @@ export const MACHINES: Machine[] = [
   },
   {
     key: 'row_machine',
-    name: 'Chest-Supported Row Machine',
+    name: 'Supported Row (Omni Lat Pull and Row)',
     kind: 'machine',
     muscles: ['middle back', 'lats'],
-    summary: 'Row machine where your chest rests on a pad, so your lower back is protected.',
-    setup: ['Adjust the seat so the handles are at chest height and your chest sits on the pad.'],
+    summary: 'Synergy chest supported row: you sit facing the pad with your chest on it and pull two arms toward you, so your lower back is protected. It has horizontal and vertical grips on each arm, and the weight is picked with the yellow pin in the stack.',
+    setup: [
+      'Adjust the seat height so that at the start your arms are almost parallel to the floor.',
+      'Adjust the chest pad in or out so you can only just reach the handles at full stretch.',
+      'Note your settings for next time.',
+    ],
     howTo: [
       'Grab the handles, pull your elbows back past your body.',
       'Squeeze shoulder blades, then extend your arms slowly.',
     ],
     mistakes: ['Lifting your chest off the pad to heave the weight.'],
+    tip: 'The label says the horizontal grips with your elbows up and out hit the back of your shoulders and upper back more. The vertical grips with your elbows tucked down hit your lats more.',
     exercises: ['Leverage_Iso_Row', 'Leverage_High_Row'],
-    jetts: false,
+    jetts: true,
   },
   {
     key: 'assisted_pullup',
@@ -410,7 +434,7 @@ export const MACHINES: Machine[] = [
     name: 'Treadmill',
     kind: 'cardio',
     muscles: ['quadriceps', 'calves'],
-    summary: 'Walk or run on a moving belt.',
+    summary: 'A row of Synergy Drax treadmills with a floating deck (a cushioned belt that is kinder to your knees), a big screen and a cup holder. Walk or run on a moving belt.',
     setup: [
       'Clip the safety key to your clothing. Pulling it stops the belt.',
       'Stand on the side rails, press Start, then step on once the belt is moving slowly.',
@@ -453,7 +477,7 @@ export const MACHINES: Machine[] = [
     name: 'Rowing Machine',
     kind: 'cardio',
     muscles: ['middle back', 'quadriceps', 'hamstrings'],
-    summary: 'Full-body cardio: legs push, then body leans back, then arms pull.',
+    summary: 'Concept2 rowing machines with a PM3 monitor. The damper dial on the fan housing is numbered 1 to 10. Full body cardio: legs push, then body leans back, then arms pull.',
     setup: ['Strap your feet in with the strap across the widest part of your foot.', 'Damper (fan lever) around 3 to 5.'],
     howTo: [
       'Order on the way back: legs, then lean back slightly, then pull the handle to your lower ribs.',

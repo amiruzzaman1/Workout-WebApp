@@ -41,6 +41,13 @@ const P = {
   leg_curl_1: require('../../assets/gym/leg_curl_1.jpg'),
   ab_crunch_1: require('../../assets/gym/ab_crunch_1.jpg'),
   leg_ext_1: require('../../assets/gym/leg_ext_1.jpg'),
+  omni_leg_press_1: require('../../assets/gym/omni_leg_press_1.jpg'),
+  lat_pull_1: require('../../assets/gym/lat_pull_1.jpg'),
+  lat_pull_2: require('../../assets/gym/lat_pull_2.jpg'),
+  supported_row_1: require('../../assets/gym/supported_row_1.jpg'),
+  supported_row_label: require('../../assets/gym/supported_row_label.jpg'),
+  treadmills_1: require('../../assets/gym/treadmills_1.jpg'),
+  rowers_1: require('../../assets/gym/rowers_1.jpg'),
 } as const;
 
 export const GYM_PHOTOS: Record<string, ImageSourcePropType[]> = {
@@ -82,6 +89,10 @@ export const GYM_PHOTOS: Record<string, ImageSourcePropType[]> = {
   bike: [P.bikes_1, P.cardio_1],
   spin_bike: [P.cardio_1],
   cross_trainer: [P.cardio_1],
-  rower: [P.cardio_1],
+  rower: [P.rowers_1],
   stairmaster: [P.climbmill_1],
+  omni_leg_press: [P.omni_leg_press_1],
+  lat_pulldown: [P.lat_pull_1, P.lat_pull_2],
+  row_machine: [P.supported_row_1, P.supported_row_label],
+  treadmill: [P.treadmills_1],
 };
