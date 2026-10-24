@@ -1,9 +1,11 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
+import { CardioFields } from '../../../../../src/components/CardioFields';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { ExerciseList } from '../../../../../src/components/ExerciseList';
 import { Button, Card, Chip, hovered, Input, Label, P, Row, Screen, smooth } from '../../../../../src/components/ui';
+import { cardioKind, estimateCardio, whoFrom } from '../../../../../src/lib/cardio';
 import { confirm } from '../../../../../src/lib/confirm';
 import { Exercise, getExercise, groupOf, titleCase } from '../../../../../src/lib/exercises';
 import { groupColor } from '../../../../../src/lib/groups';
@@ -16,7 +18,9 @@ export default function SessionEditor() {
   const day = Number(params.day);
   const idx = Number(params.idx);
   const router = useRouter();
-  const { plan, savePlan, equipment } = useStore();
+  const { plan, savePlan, equipment, profile } = useStore();
+  const who = whoFrom(profile);
+  const cardioStart = (id: string) => (cardioKind(id) ? { cardio: estimateCardio(id, 'steady', who.age) } : { cardio: undefined });
   const [picker, setPicker] = useState<{ mode: 'add' } | { mode: 'swap'; uid: string } | null>(null);
   const [swapOpen, setSwapOpen] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -58,10 +62,11 @@ export default function SessionEditor() {
         items: [...draft!.items, {
           uid: uid(), exerciseId: e.id, metric: m, sets: m === 'minutes' ? 1 : 3,
           reps: m === 'reps' ? '10-12' : m === 'seconds' ? '30-45' : '20', restSec: m === 'reps' ? 75 : 45,
+          ...cardioStart(e.id),
         }],
       });
     } else {
-      updateItem(picker.uid, { exerciseId: e.id, metric: metricFor(e.id) });
+      updateItem(picker.uid, { exerciseId: e.id, metric: metricFor(e.id), ...cardioStart(e.id) });
     }
     setPicker(null);
     setSwapOpen(null);
@@ -129,6 +134,7 @@ export default function SessionEditor() {
                 ))}
               </Row>
               {it.note && <P muted style={{ fontSize: 13 }}>{it.note}</P>}
+              {cardioKind(it.exerciseId) && <CardioFields item={it} who={who} onChange={(ch) => updateItem(it.uid, ch)} />}
 
               <Row wrap style={{ marginTop: 6 }}>
                 <Button small kind="secondary" icon="arrow-up" title="" label="Move up" onPress={() => move(i, -1)} disabled={i === 0} />
@@ -143,7 +149,7 @@ export default function SessionEditor() {
                   {alts.map((id) => {
                     const a = getExercise(id)!;
                     return (
-                      <Pressable key={id} onPress={() => { updateItem(it.uid, { exerciseId: id }); setSwapOpen(null); }} accessibilityRole="button"
+                      <Pressable key={id} onPress={() => { updateItem(it.uid, { exerciseId: id, ...cardioStart(id) }); setSwapOpen(null); }} accessibilityRole="button"
                         style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10, backgroundColor: C.card2, borderWidth: 1, borderColor: 'transparent' }, smooth, hovered(p) && { borderColor: C.text }]}>
                         <ExerciseThumb exercise={a} size={40} />
                         <Text style={{ color: C.text, flex: 1, fontFamily: F.body }}>{a.name}</Text>

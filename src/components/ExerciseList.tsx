@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { allExercises, Exercise, groupOf, isAvailable, MUSCLE_GROUPS, titleCase } from '../lib/exercises';
+import { allExercises, Exercise, groupOf, isAvailable, MUSCLE_GROUPS, needsLabel, titleCase } from '../lib/exercises';
 import { useStore } from '../lib/store';
 import { C, GROUP_COLORS } from '../lib/theme';
 import { GroupIcon } from './GroupIcon';
@@ -17,9 +17,10 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<string | null>(null);
-  const [onlyMine, setOnlyMine] = useState(true);
+  // Only what can be done with the gym's equipment is shown; everything else is archived and one tap away.
+  const [view, setView] = useState<'mine' | 'archive'>('mine');
   const [beginnerOnly, setBeginnerOnly] = useState(false);
-  const [includeStretch, setIncludeStretch] = useState(false);
+  const [includeStretch, setIncludeStretch] = useState(true);
 
   const list = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -28,11 +29,17 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
       .filter((e) => (includeStretch ? true : e.category !== 'stretching'))
       .filter((e) => (muscles ? e.primary.some((m) => muscles.includes(m)) : true))
       .filter((e) => (beginnerOnly ? e.level === 'beginner' : true))
-      .filter((e) => (onlyMine ? isAvailable(e, equipment) : true))
+      .filter((e) => (view === 'mine') === isAvailable(e, equipment))
       .filter((e) => words.every((w) => e.name.toLowerCase().includes(w)))
       .sort((a, b) => Number(!!b.custom) - Number(!!a.custom) || LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name));
     // customExercises in deps so new ones show up
-  }, [q, group, onlyMine, beginnerOnly, includeStretch, equipment, customExercises]);
+  }, [q, group, view, beginnerOnly, includeStretch, equipment, customExercises]);
+
+  const counts = useMemo(() => {
+    let mine = 0;
+    for (const e of allExercises()) if (isAvailable(e, equipment)) mine += 1;
+    return { mine, archive: allExercises().length - mine };
+  }, [equipment, customExercises]);
 
   return (
     <FlatList
@@ -65,11 +72,18 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
 
           {/* what to include */}
           <View style={f.section}>
+            <Text style={f.label}>Where</Text>
+            <View style={f.toggles}>
+              <Seg label={`At my gym · ${counts.mine}`} on={view === 'mine'} onPress={() => setView('mine')} />
+              <Seg label={`Archived · ${counts.archive}`} on={view === 'archive'} onPress={() => setView('archive')} />
+            </View>
+            {view === 'archive' && (
+              <Text style={f.count}>These need equipment that is not in your gym list. They are kept here so you can still read how they are done or add one to a session.</Text>
+            )}
             <Text style={f.label}>Show only</Text>
             <View style={f.toggles}>
-              <Toggle label="My gym" on={onlyMine} onPress={() => setOnlyMine(!onlyMine)} />
               <Toggle label="Beginner" on={beginnerOnly} onPress={() => setBeginnerOnly(!beginnerOnly)} />
-              <Toggle label="Include stretches" on={includeStretch} onPress={() => setIncludeStretch(!includeStretch)} />
+              <Toggle label="Warm up and stretches" on={includeStretch} onPress={() => setIncludeStretch(!includeStretch)} />
             </View>
           </View>
 
@@ -82,11 +96,20 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
           onPress={() => onPick(item)}
           left={<ExerciseThumb exercise={item} />}
           title={item.name}
-          subtitle={`${item.custom ? 'My exercise · ' : ''}${item.primary.map(titleCase).join(', ')} · ${titleCase(item.equipment)} · ${titleCase(item.level)}`}
+          subtitle={`${item.custom ? 'My exercise · ' : ''}${item.primary.map(titleCase).join(', ')} · ${view === 'archive' ? 'Needs ' + needsLabel(item) : titleCase(item.equipment)} · ${titleCase(item.level)}`}
           right={<Ionicons name="chevron-forward" size={18} color={C.muted} />}
         />
       )}
     />
+  );
+}
+
+/** One of two big choices (at my gym or archived), drawn as a pill so it reads as a tab, not a filter. */
+function Seg({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected: on }} style={(p) => [f.seg, smooth, hovered(p) && !on && { backgroundColor: C.card2, borderColor: C.text }, on && f.segOn, p.pressed && { opacity: 0.7 }]}>
+      <Text style={[f.segText, on && { color: C.inverseText }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -110,4 +133,7 @@ const f = StyleSheet.create({
   boxOn: { backgroundColor: C.inverse, borderColor: C.inverse },
   toggleText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 14 },
   count: { color: C.muted, fontFamily: F.body, fontSize: 13 },
+  seg: { minHeight: 44, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
+  segOn: { backgroundColor: C.inverse, borderColor: C.inverse },
+  segText: { color: C.muted, fontFamily: F.bodySemi, fontSize: 14 },
 });

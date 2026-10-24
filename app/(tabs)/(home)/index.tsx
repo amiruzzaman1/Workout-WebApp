@@ -15,7 +15,9 @@ import { refreshAlarms } from '../../../src/lib/alarms';
 import { checkGoalMilestone, checkStreakMilestone } from '../../../src/lib/milestones';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
 import { refreshReminders } from '../../../src/lib/reminders';
-import { PlanSession, uid } from '../../../src/lib/planner';
+import { JETTS_NEWTOWN_TEMPLATE } from '../../../src/data/machines';
+import { isOwner } from '../../../src/lib/owner';
+import { GYM_VERSION, PlanSession, uid } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
@@ -23,7 +25,7 @@ import { currentStreak, daysSinceLastLog, loggedDaySet } from '../../../src/lib/
 import { A, C, F, R, TYPE } from '../../../src/lib/theme';
 
 export default function DashboardScreen() {
-  const { plan, logs, savePlan, regeneratePlan, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, progressPhotos, water, sleep, weights } = useStore();
+  const { plan, logs, savePlan, regeneratePlan, setEquipment, ready, session, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, progressPhotos, water, sleep, weights } = useStore();
   const router = useRouter();
   const [coachStyle] = useCoachStyle();
   const [quote, setQuote] = useState(() => randomQuote());
@@ -91,6 +93,20 @@ export default function DashboardScreen() {
       refreshAlarms(alarms);
     });
   }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
+
+  // Once per gym version (planner.ts GYM_VERSION): set the equipment list to what is really at the gym and build a
+  // fresh plan from it. The version is stored in the plan itself, so web and phone agree and it never loops.
+  useEffect(() => {
+    if (!ready || !profile || !isOwner(session) || plan?.data.gym === GYM_VERSION) return;
+    (async () => {
+      try {
+        await setEquipment(JETTS_NEWTOWN_TEMPLATE);
+        await regeneratePlan({ ...profile, equipment: JETTS_NEWTOWN_TEMPLATE });
+      } catch {
+        /* try again next time the Dashboard opens */
+      }
+    })();
+  }, [ready, profile?.id, session, plan?.data.gym]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

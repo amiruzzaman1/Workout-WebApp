@@ -4,6 +4,7 @@
 //  - On a two-session day the second session never repeats muscles from the first.
 //    Beginners always get light cardio/mobility as the second session.
 //  - Beginners get fewer exercises and at most 3 sets.
+import { CardioPlan, cardioKind, estimateCardio, Intensity, whoFrom } from './cardio';
 import { getExercise, isAvailable } from './exercises';
 
 export type Goal = 'muscle' | 'fat_loss' | 'strength' | 'general' | 'recomp';
@@ -53,6 +54,8 @@ export type PlanItem = {
   metric?: Metric;
   restSec: number;
   note?: string;
+  /** Cardio only: speed, incline, level, heart rate and calories. Estimated, and yours to edit. */
+  cardio?: CardioPlan;
 };
 
 /** Exercises that are a hold, so they're timed rather than counted. */
@@ -86,9 +89,14 @@ export type PlanSession = {
 
 export type PlanDay = { day: number; sessions: PlanSession[] };
 
+/** Bump this whenever the gym's equipment list or the exercise slots change: the owner's account then rebuilds its equipment and plan once. */
+export const GYM_VERSION = 'jetts-newtown-2026-10-25';
+
 export type PlanData = {
   version: 1;
   generatedAt: string;
+  /** Which GYM_VERSION this plan was built for. */
+  gym?: string;
   split: Exclude<SplitChoice, 'auto'>;
   notes: string[];
   days: PlanDay[];
@@ -108,28 +116,28 @@ export const SPLIT_LABELS: Record<SplitChoice, string> = {
 
 // ---------- Exercise slots: candidates in order of preference ----------
 export const SLOTS: Record<string, string[]> = {
-  squat: ['Leg_Press', 'Smith_Machine_Squat', 'Hack_Squat', 'Goblet_Squat', 'Dumbbell_Squat', 'Barbell_Squat', 'Bodyweight_Squat'],
-  lunge: ['Split_Squat_with_Dumbbells', 'Dumbbell_Lunges', 'Smith_Single-Leg_Split_Squat', 'Bodyweight_Squat'],
-  hinge: ['Stiff-Legged_Dumbbell_Deadlift', 'Hyperextensions_Back_Extensions', 'Pull_Through', 'Romanian_Deadlift', 'Single_Leg_Glute_Bridge'],
-  leg_curl: ['Seated_Leg_Curl', 'Lying_Leg_Curls', 'Stiff-Legged_Dumbbell_Deadlift'],
+  squat: ['Leg_Press', 'Smith_Machine_Squat', 'Goblet_Squat', 'Barbell_Squat', 'Dumbbell_Squat', 'Bodyweight_Squat'],
+  lunge: ['Split_Squat_with_Dumbbells', 'Dumbbell_Lunges', 'Smith_Single-Leg_Split_Squat', 'Dumbbell_Step_Ups', 'Bodyweight_Squat'],
+  hinge: ['Stiff-Legged_Dumbbell_Deadlift', 'Hyperextensions_Back_Extensions', 'Romanian_Deadlift', 'Pull_Through', 'Single_Leg_Glute_Bridge'],
+  leg_curl: ['Seated_Leg_Curl', 'Stiff-Legged_Dumbbell_Deadlift', 'Seated_Band_Hamstring_Curl'],
   leg_ext: ['Leg_Extensions', 'Split_Squat_with_Dumbbells'],
-  glutes: ['Thigh_Abductor', 'Barbell_Hip_Thrust', 'Single_Leg_Glute_Bridge', 'Butt_Lift_Bridge'],
-  calves: ['Standing_Calf_Raises', 'Seated_Calf_Raise', 'Calf_Press_On_The_Leg_Press_Machine', 'Smith_Machine_Calf_Raise', 'Dumbbell_Seated_One-Leg_Calf_Raise'],
-  h_push: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Dumbbell_Bench_Press', 'Smith_Machine_Bench_Press', 'Pushups'],
+  glutes: ['Barbell_Hip_Thrust', 'Single_Leg_Glute_Bridge', 'Butt_Lift_Bridge', 'Pull_Through'],
+  calves: ['Calf_Press_On_The_Leg_Press_Machine', 'Smith_Machine_Calf_Raise', 'Dumbbell_Seated_One-Leg_Calf_Raise'],
+  h_push: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Dumbbell_Bench_Press', 'Smith_Machine_Bench_Press', 'Barbell_Bench_Press_-_Medium_Grip', 'Pushups'],
   incline_push: ['Leverage_Incline_Chest_Press', 'Incline_Dumbbell_Press', 'Smith_Machine_Incline_Bench_Press', 'Incline_Push-Up'],
-  chest_fly: ['Butterfly', 'Cable_Crossover', 'Dumbbell_Flyes'],
+  chest_fly: ['Butterfly', 'Cable_Crossover', 'Dumbbell_Flyes', 'Incline_Dumbbell_Flyes'],
   v_pull: ['Wide-Grip_Lat_Pulldown', 'Close-Grip_Front_Lat_Pulldown', 'Underhand_Cable_Pulldowns', 'Pullups'],
-  h_pull: ['Seated_Cable_Rows', 'Leverage_Iso_Row', 'One-Arm_Dumbbell_Row', 'Bent_Over_Two-Dumbbell_Row'],
-  back_iso: ['Straight-Arm_Pulldown', 'Hyperextensions_Back_Extensions', 'Dumbbell_Incline_Row'],
+  h_pull: ['Leverage_Iso_Row', 'Seated_Cable_Rows', 'One-Arm_Dumbbell_Row', 'Bent_Over_Two-Dumbbell_Row', 'Leverage_High_Row'],
+  back_iso: ['Straight-Arm_Pulldown', 'Hyperextensions_Back_Extensions', 'Dumbbell_Incline_Row', 'Leverage_High_Row'],
   v_push: ['Machine_Shoulder_Military_Press', 'Leverage_Shoulder_Press', 'Seated_Dumbbell_Press', 'Smith_Machine_Overhead_Shoulder_Press'],
   lateral: ['Side_Lateral_Raise', 'Cable_Seated_Lateral_Raise'],
   rear_delt: ['Reverse_Machine_Flyes', 'Face_Pull', 'Reverse_Flyes'],
-  biceps: ['Dumbbell_Bicep_Curl', 'Standing_Biceps_Cable_Curl', 'Machine_Bicep_Curl', 'EZ-Bar_Curl'],
-  biceps2: ['Hammer_Curls', 'Cable_Hammer_Curls_-_Rope_Attachment', 'Incline_Dumbbell_Curl'],
-  triceps: ['Triceps_Pushdown_-_Rope_Attachment', 'Triceps_Pushdown', 'Machine_Triceps_Extension', 'Bench_Dips'],
+  biceps: ['Dumbbell_Bicep_Curl', 'Machine_Bicep_Curl', 'Standing_Biceps_Cable_Curl', 'EZ-Bar_Curl'],
+  biceps2: ['Hammer_Curls', 'Cable_Hammer_Curls_-_Rope_Attachment', 'Incline_Dumbbell_Curl', 'Machine_Preacher_Curls'],
+  triceps: ['Triceps_Pushdown_-_Rope_Attachment', 'Triceps_Pushdown', 'Dip_Machine', 'Bench_Dips'],
   triceps2: ['Cable_Rope_Overhead_Triceps_Extension', 'Standing_Dumbbell_Triceps_Extension', 'Tricep_Dumbbell_Kickback'],
   core: ['Plank', 'Cable_Crunch', 'Ab_Crunch_Machine', 'Crunches', 'Dead_Bug'],
-  core2: ['Pallof_Press', 'Reverse_Crunch', 'Side_Bridge', 'Dead_Bug'],
+  core2: ['Pallof_Press', 'Reverse_Crunch', 'Knee_Hip_Raise_On_Parallel_Bars', 'Side_Bridge', 'Dead_Bug'],
   cardio: ['Walking_Treadmill', 'Bicycling_Stationary', 'Elliptical_Trainer', 'Rowing_Stationary', 'Stairmaster'],
 };
 
@@ -211,13 +219,24 @@ export function uid() {
   return Date.now().toString(36) + '-' + uidCounter.toString(36) + '-' + Math.random().toString(36).slice(2, 6);
 }
 
-function pickFromSlot(slot: string, equipment: Set<string>, used: Set<string>, exclude: Set<string>): string | null {
+/** Estimated cardio numbers (speed, incline, level, heart rate) for a cardio exercise, or nothing for anything else. */
+function cardioFor(exerciseId: string, intensity: Intensity, p: Profile): CardioPlan | undefined {
+  if (!cardioKind(exerciseId)) return undefined;
+  return estimateCardio(exerciseId, intensity, whoFrom(p).age);
+}
+
+/**
+ * The first usable exercise for a slot. `variant` shifts along the usable list, so the second time a session type
+ * comes up in the week (Thursday's upper body after Monday's) it uses different exercises for the same muscles.
+ */
+function pickFromSlot(slot: string, equipment: Set<string>, used: Set<string>, exclude: Set<string>, variant = 0): string | null {
+  const ok: string[] = [];
   for (const id of SLOTS[slot] ?? []) {
     const e = getExercise(id);
     if (!e || used.has(id) || exclude.has(id)) continue;
-    if (isAvailable(e, equipment)) return id;
+    if (isAvailable(e, equipment)) ok.push(id);
   }
-  return null;
+  return ok.length ? ok[variant % ok.length] : null;
 }
 
 function prescription(p: Profile, slot: string, exerciseId: string): { sets: number; reps: string; restSec: number; metric: Metric } {
@@ -241,7 +260,7 @@ function prescription(p: Profile, slot: string, exerciseId: string): { sets: num
 }
 
 /** 5 minutes of easy cardio, then two or three drills for the muscles this session trains. */
-function buildWarmup(groups: string[], equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanItem[] {
+function buildWarmup(p: Profile, groups: string[], equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanItem[] {
   const items: PlanItem[] = [];
   const used = new Set<string>();
   const cardio = pickFromSlot('cardio', equipment, used, exclude.ids);
@@ -250,6 +269,7 @@ function buildWarmup(groups: string[], equipment: Set<string>, exclude: { slots:
     items.push({
       uid: uid(), exerciseId: cardio, slot: 'warmup', phase: 'warmup', sets: 1, reps: '5', metric: 'minutes', restSec: 0,
       note: 'Easy pace, just enough to warm up and raise your heart rate.',
+      cardio: cardioFor(cardio, 'easy', p),
     });
   }
   // Specific first, so an arms day gets arm drills rather than generic ones.
@@ -275,7 +295,19 @@ function buildWarmup(groups: string[], equipment: Set<string>, exclude: { slots:
   return items;
 }
 
-function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanSession {
+/** Fat loss and recomp goals get a short steady cardio finish on weights days, like an incline walk. */
+function buildFinisher(p: Profile, equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }, used: Set<string>, variant: number): PlanItem[] {
+  if (p.goal !== 'fat_loss' && p.goal !== 'recomp') return [];
+  if (p.session_minutes < 40) return [];
+  const c = pickFromSlot('cardio', equipment, used, exclude.ids, variant);
+  if (!c) return [];
+  return [{
+    uid: uid(), exerciseId: c, slot: 'cardio', phase: 'main', sets: 1, reps: '10', metric: 'minutes', restSec: 0,
+    note: 'Finish with steady cardio. You can still talk in short sentences.', cardio: cardioFor(c, 'steady', p),
+  }];
+}
+
+function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }, variant = 0): PlanSession {
   // Warm-up takes about 8 minutes, so the rest of the session fills with working exercises.
   const maxItems = Math.max(5, Math.min(p.experience === 'beginner' ? 7 : 9, Math.round((p.session_minutes - 8) / 6)));
   const used = new Set<string>();
@@ -283,7 +315,8 @@ function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude:
   for (const slot of t.slots) {
     if (items.length >= maxItems) break;
     if (exclude.slots.has(slot)) continue;
-    const id = pickFromSlot(slot, equipment, used, exclude.ids);
+    // Core and calf work keeps its first choice; the big lifts and machines rotate between the two versions.
+    const id = pickFromSlot(slot, equipment, used, exclude.ids, CORE.has(slot) ? 0 : variant);
     if (!id) continue;
     used.add(id);
     items.push({ uid: uid(), exerciseId: id, slot, phase: 'main', ...prescription(p, slot, id) });
@@ -294,7 +327,7 @@ function buildStrength(t: Template, p: Profile, equipment: Set<string>, exclude:
     type: 'strength',
     focus: t.groups,
     warmup: 'Do 1 or 2 light sets of the first exercise before your working sets.',
-    items: [...buildWarmup(t.groups, equipment, exclude), ...items],
+    items: [...buildWarmup(p, t.groups, equipment, exclude), ...items, ...buildFinisher(p, equipment, exclude, used, variant)],
   };
 }
 
@@ -305,7 +338,7 @@ function buildCardio(p: Profile, equipment: Set<string>, exclude: { slots: Set<s
   const c = pickFromSlot('cardio', equipment, used, exclude.ids);
   if (c) {
     used.add(c);
-    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: String(minutes), metric: 'minutes', restSec: 0, note: 'Steady pace: you can still talk in short sentences.' });
+    items.push({ uid: uid(), exerciseId: c, slot: 'cardio', sets: 1, reps: String(minutes), metric: 'minutes', restSec: 0, note: 'Steady pace: you can still talk in short sentences.', cardio: cardioFor(c, light ? 'easy' : 'steady', p) });
   }
   for (const slot of ['core', 'core2']) {
     const id = pickFromSlot(slot, equipment, used, exclude.ids);
@@ -338,6 +371,8 @@ export function generatePlan(p: Profile): PlanData {
 
   // Simulate two weeks so recovery across Sunday→Monday is respected; keep week 2.
   const lastTrained: Record<string, number> = {};
+  const timesUsed: Record<string, number> = {};
+  const nextVariant = (key: string) => ((timesUsed[key] = (timesUsed[key] ?? 0) + 1) - 1) % 2;
   let rot = 0;
   let result: PlanDay[] = [];
 
@@ -358,7 +393,7 @@ export function generatePlan(p: Profile): PlanData {
           }
         }
         if (first) {
-          sessions.push(buildStrength(first, p, equipment, exclude));
+          sessions.push(buildStrength(first, p, equipment, exclude, nextVariant(first.key)));
           first.groups.forEach((g) => (lastTrained[g] = dayIndex));
         } else {
           sessions.push(buildCardio(p, equipment, exclude, false));
@@ -378,7 +413,7 @@ export function generatePlan(p: Profile): PlanData {
             }
           }
           if (second) {
-            sessions.push(buildStrength(second, p, equipment, exclude));
+            sessions.push(buildStrength(second, p, equipment, exclude, nextVariant(second.key)));
             second.groups.forEach((g) => (lastTrained[g] = dayIndex));
           } else {
             sessions.push(buildCardio(p, equipment, exclude, true));
@@ -402,7 +437,7 @@ export function generatePlan(p: Profile): PlanData {
   }
   if (p.injuries) notes.push('You mentioned an injury, so exercises that commonly aggravate it were left out. Stop anything that causes pain and check with a physio.');
 
-  return { version: 1, generatedAt: new Date().toISOString(), split, notes, days: result };
+  return { version: 1, generatedAt: new Date().toISOString(), gym: GYM_VERSION, split, notes, days: result };
 }
 
 /** Alternatives for swapping: same slot first, then anything hitting the same primary muscle. */

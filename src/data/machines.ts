@@ -147,7 +147,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Starting with a huge range on the adductor setting, which can strain the groin.'],
     exercises: ['Thigh_Abductor', 'Thigh_Adductor'],
-    jetts: true,
+    jetts: false,
   },
   {
     key: 'calf_raise',
@@ -268,7 +268,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Rocking back and forth with the torso.', 'Rounding the lower back.'],
     exercises: ['Seated_Cable_Rows', 'Seated_One-arm_Cable_Pulley_Rows'],
-    jetts: true,
+    jetts: false,
   },
   {
     key: 'row_machine',
@@ -400,6 +400,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Standing too close so the stack touches down every rep.', 'Using body swing to move the weight.'],
     exercises: [
+      'Seated_Cable_Rows', 'Seated_One-arm_Cable_Pulley_Rows',
       'Triceps_Pushdown_-_Rope_Attachment', 'Triceps_Pushdown', 'Standing_Biceps_Cable_Curl', 'Cable_Crossover',
       'Face_Pull', 'Cable_Crunch', 'Cable_Seated_Lateral_Raise', 'Straight-Arm_Pulldown', 'Pallof_Press',
       'Cable_Rope_Overhead_Triceps_Extension', 'Cable_Hammer_Curls_-_Rope_Attachment', 'Pull_Through',

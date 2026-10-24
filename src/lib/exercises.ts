@@ -1,5 +1,5 @@
 import raw from '../data/exercises.json';
-import { EQUIPMENT_TO_KEY, EXERCISE_NEEDS, EXERCISE_TO_MACHINE } from '../data/machines';
+import { EQUIPMENT_TO_KEY, EXERCISE_NEEDS, EXERCISE_TO_MACHINE, MACHINE_BY_KEY } from '../data/machines';
 
 export type Exercise = {
   id: string;
@@ -78,4 +78,12 @@ export function isAvailable(e: Exercise, equipment: Set<string>): boolean {
   if (k === null) return true;
   if (k === 'unknown') return false;
   return equipment.has(k);
+}
+
+/** What an exercise needs, in words, for the archived list: the gym item's name, or the raw equipment. */
+export function needsLabel(e: Exercise): string {
+  const k = requiredKey(e);
+  if (k === null) return 'No equipment';
+  if (k === 'unknown') return titleCase(e.equipment) + ' (not in my gym)';
+  return MACHINE_BY_KEY[k]?.name ?? k;
 }

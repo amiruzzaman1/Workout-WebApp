@@ -3,8 +3,10 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CardioFields } from '../../../../../src/components/CardioFields';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { Button, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, smooth } from '../../../../../src/components/ui';
+import { cardioKind, whoFrom } from '../../../../../src/lib/cardio';
 import { getExercise, groupOf } from '../../../../../src/lib/exercises';
 import { groupColor } from '../../../../../src/lib/groups';
 import { DAY_NAMES, METRIC_SHORT, metricFor, PlanItem } from '../../../../../src/lib/planner';
@@ -22,7 +24,8 @@ export default function WorkoutScreen() {
   const idx = Number(params.idx);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { plan, logs, visits, activeVisit, startVisit, endVisit } = useStore();
+  const { plan, logs, visits, activeVisit, startVisit, endVisit, savePlan, profile } = useStore();
+  const who = whoFrom(profile);
   const session = plan?.data.days.find((d) => d.day === day)?.sessions[idx];
   // The day being logged. A past day lets you fill in a workout you forgot to record.
   const today = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) ? params.date : todayISO();
@@ -52,6 +55,16 @@ export default function WorkoutScreen() {
   const totalSets = mainItems.reduce((a, it) => a + Math.max(1, it.sets), 0);
   const pct = totalSets ? Math.min(1, doneSets / totalSets) : 0;
   const todayTotal = secondsByDate(visits, now).get(today) ?? 0;
+  // Cardio numbers edited here (speed, incline, heart rate, calories) are saved into the plan itself.
+  const changeItem = (u: string, changes: Partial<PlanItem>) => {
+    if (!plan) return;
+    savePlan({
+      ...plan.data,
+      days: plan.data.days.map((d) => (d.day === day
+        ? { ...d, sessions: d.sessions.map((s, i) => (i === idx ? { ...s, items: s.items.map((it) => (it.uid === u ? { ...it, ...changes } : it)) } : s)) }
+        : d)),
+    }).catch(() => {});
+  };
   const ensureTimer = () => { if (isToday && !activeVisit) startVisit(session.title); };
   async function finish() {
     if (isToday) await endVisit();
@@ -113,7 +126,7 @@ export default function WorkoutScreen() {
             </Row>
             <Text style={st.meta}>Picked for what today trains. Light and easy, nothing near failure.</Text>
             {warmups.map((it, i) => (
-              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} compact
+              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} compact who={who} onChangeItem={changeItem}
                 onRest={() => ensureTimer()} />
             ))}
           </View>
@@ -121,7 +134,7 @@ export default function WorkoutScreen() {
 
         <Row style={{ gap: 7, marginTop: 22 }}><Ionicons name="barbell" size={15} color={A.fat} /><Text style={[st.sectionLabel, { color: A.fat }]}>Working sets</Text></Row>
         {mainItems.map((it, i) => (
-          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
+          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} who={who} onChangeItem={changeItem} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
         ))}
 
         <Button icon="flag" title={isToday && activeVisit ? `Finish workout · ${fmtDuration(visitSeconds(activeVisit, now))}` : 'Finish workout'} onPress={finish} style={{ marginTop: 24 }} />
@@ -142,7 +155,7 @@ export default function WorkoutScreen() {
   );
 }
 
-function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact }: { item: PlanItem; index: number; sessionTitle: string; date: string; onRest: (sec: number) => void; compact?: boolean }) {
+function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, onChangeItem }: { item: PlanItem; index: number; sessionTitle: string; date: string; onRest: (sec: number) => void; compact?: boolean; who: ReturnType<typeof whoFrom>; onChangeItem: (uid: string, changes: Partial<PlanItem>) => void }) {
   const router = useRouter();
   const { logs, addLog, deleteLog, updateLog } = useStore();
   const e = getExercise(item.exerciseId);
@@ -248,6 +261,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact }: { i
         </View>
       )}
       {item.note && <Text style={st.meta}>{item.note}</Text>}
+      {cardioKind(item.exerciseId) && <CardioFields item={item} who={who} onChange={(ch) => onChangeItem(item.uid, ch)} />}
 
       {range && !timed && (machineLike || unit === 'bw') && (
         <Row style={{ gap: 0, alignSelf: 'flex-start' }}>
