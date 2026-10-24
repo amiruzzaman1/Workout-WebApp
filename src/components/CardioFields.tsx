@@ -48,6 +48,9 @@ export function CardioFields({ item, who, onChange }: { item: PlanItem; who: Who
   const minutes = minutesOf(item.reps);
   const [hrLo, hrHi] = heartTarget(c, who.age);
   const kcal = kcalFor(item.exerciseId, minutes, who, c);
+  // Only offer the reset once something differs from the estimate.
+  const differs = (a: number | undefined, b: number | undefined) => a != null && b != null && a !== b;
+  const edited = !!(c.kcalManual || c.distanceManual || c.mode || differs(c.speedKmh, est.speedKmh) || differs(c.incline, est.incline) || differs(c.level, est.level) || differs(c.hrLow, est.hrLow) || differs(c.hrHigh, est.hrHigh));
   const set = (changes: Partial<NonNullable<PlanItem['cardio']>>) => onChange({ cardio: { ...c, ...changes } });
 
   return (
@@ -86,7 +89,7 @@ export function CardioFields({ item, who, onChange }: { item: PlanItem; who: Who
         <NumField label="Heart rate high (bpm)" value={hrHi} onCommit={(n) => set({ hrHigh: n, hrLow: c.hrLow ?? hrLo })} />
         <NumField label={c.kcalManual ? 'Calories (yours)' : 'Calories (estimate)'} value={kcal} onCommit={(n) => set(n == null ? { kcalManual: false, kcal: undefined } : { kcal: n, kcalManual: true })} />
       </Row>
-      {(c.kcalManual || c.hrLow || c.speedKmh != null || c.incline != null || c.level != null || c.mode || c.distanceManual) && (
+      {edited && (
         <Row>
           <Button small kind="secondary" icon="refresh" title="Back to estimates" onPress={() => onChange({ cardio: { ...estimateCardio(item.exerciseId, effort, who.age), intensity: effort } })} />
         </Row>
