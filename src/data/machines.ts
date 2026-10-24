@@ -679,7 +679,7 @@ export const MACHINES: Machine[] = [
     name: 'Weight Plates',
     kind: 'free',
     muscles: ['shoulders', 'abdominals'],
-    summary: 'Grey ZIVA plates on a plate tree (check the number on each plate) near the kettlebells, plus colour coded rubber plates on the racks.',
+    summary: 'Grey ZIVA plates on a plate tree (check the number on each plate) near the kettlebells, plus colour coded rubber plates on the racks. Kettlebells and plates together run from 1 kg up to 50 kg.',
     setup: ['Take only what you need and return plates to their tree or rack when finished.'],
     howTo: ['For a plate raise or twist, hold one plate with both hands and move it slowly under control.'],
     mistakes: ['Leaving plates loaded on the machines. There is a sign asking everyone to remove them after use.'],
