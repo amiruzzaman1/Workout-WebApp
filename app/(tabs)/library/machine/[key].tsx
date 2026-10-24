@@ -1,7 +1,8 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Switch, Text, View } from 'react-native';
+import { Image, ScrollView, Switch, Text, View } from 'react-native';
 import { ExerciseAnimation, ExerciseThumb } from '../../../../src/components/ExerciseAnimation';
-import { Bullets, Eyebrow, H1, ListRow, P, Row, Screen, Section } from '../../../../src/components/ui';
+import { Bullets, Eyebrow, H1, ListRow, P, Row, Screen, Section, usePageWidth } from '../../../../src/components/ui';
+import { GYM_PHOTOS } from '../../../../src/data/gymPhotos';
 import { MACHINE_BY_KEY } from '../../../../src/data/machines';
 import { getExercise, titleCase } from '../../../../src/lib/exercises';
 import { useStore } from '../../../../src/lib/store';
@@ -12,6 +13,7 @@ export default function MachineDetail() {
   const router = useRouter();
   const { equipment, toggleEquipment, profile } = useStore();
   const m = MACHINE_BY_KEY[String(key)];
+  const pageWidth = usePageWidth();
   if (!m) return <Screen><P>Machine not found.</P></Screen>;
   const exs = m.exercises.map(getExercise).filter((e): e is NonNullable<typeof e> => !!e);
   const on = equipment.has(m.key);
@@ -30,6 +32,17 @@ export default function MachineDetail() {
         <Switch value={on} onValueChange={() => toggleEquipment(m.key)} trackColor={{ true: C.inverse, false: C.border }}
           thumbColor={on ? C.inverseText : C.muted} {...({ activeThumbColor: C.inverseText } as any)} />
       </Row>
+
+      {!!GYM_PHOTOS[m.key]?.length && (
+        <Section title="At your gym">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {GYM_PHOTOS[m.key].map((src, i) => (
+              <Image key={i} source={src} accessibilityLabel={`${m.name} at the gym, photo ${i + 1}`} resizeMode="contain"
+                style={{ width: Math.min(pageWidth * 0.78, 320), height: Math.min(pageWidth * 0.78, 320) * 1.2, borderRadius: 12, backgroundColor: C.card }} />
+            ))}
+          </ScrollView>
+        </Section>
+      )}
 
       {m.setup.length > 0 && <Section title="Step 1: set it up"><Bullets items={m.setup} numbered /></Section>}
       {m.howTo.length > 0 && <Section title="Step 2: do the movement"><Bullets items={m.howTo} numbered /></Section>}
