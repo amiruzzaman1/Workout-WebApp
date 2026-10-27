@@ -207,7 +207,7 @@ export const MACHINES: Machine[] = [
       'Let them come back slowly until you feel a light stretch in the chest.',
     ],
     mistakes: ['Seat too low or high (handles at your neck or belly).', 'Shoulders rolling forward off the pad.'],
-    exercises: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Leverage_Incline_Chest_Press', 'Leverage_Decline_Chest_Press'],
+    exercises: ['Machine_Bench_Press'],
     jetts: true,
   },
   {
@@ -287,7 +287,7 @@ export const MACHINES: Machine[] = [
     ],
     mistakes: ['Lifting your chest off the pad to heave the weight.'],
     tip: 'The label says the horizontal grips with your elbows up and out hit the back of your shoulders and upper back more. The vertical grips with your elbows tucked down hit your lats more.',
-    exercises: ['Leverage_Iso_Row', 'Leverage_High_Row'],
+    exercises: ['Leverage_Iso_Row'],
     jetts: true,
   },
   {
@@ -341,7 +341,7 @@ export const MACHINES: Machine[] = [
       'Lower slowly back to shoulder height.',
     ],
     mistakes: ['Arching the lower back off the pad.', 'Seat so low the start position hurts your shoulders.'],
-    exercises: ['Machine_Shoulder_Military_Press', 'Leverage_Shoulder_Press'],
+    exercises: ['Machine_Shoulder_Military_Press'],
     jetts: true,
   },
   {
@@ -497,7 +497,7 @@ export const MACHINES: Machine[] = [
     setup: ['Hold the side rails, press Start on a low level (3 to 5). Know where the red emergency stop button is before you start.'],
     howTo: ['Step with your whole foot on each stair, stand tall.', 'Hold rails lightly for balance only.'],
     mistakes: ['Leaning your weight onto the rails.', 'Starting too fast. 5 to 10 minutes is plenty at first.'],
-    exercises: ['Stairmaster', 'Step_Mill', 'Power_Stairs'],
+    exercises: ['Stairmaster', 'Step_Mill'],
     jetts: true,
   },
 
@@ -929,6 +929,25 @@ export const EXERCISE_NEEDS: Record<string, string | null> = {
   'Reverse_Plate_Curls': 'weight_plates', 'Standing_Olympic_Plate_Hand_Squeeze': 'weight_plates',
   'Weighted_Bench_Dip': 'bench',
   'Mountain_Climbers': null, 'Bodyweight_Walking_Lunge': null, 'Decline_Push-Up': null, 'Chair_Squat': null,
+};
+
+// Machine exercises from the library that this gym does NOT have (plate loaded Hammer style machines, a standing leg
+// curl and so on). They are archived and never suggested. The selectorized Synergy machines the gym does have cover
+// the same movements under the names in NAME_AT_GYM below.
+export const NOT_AT_GYM = new Set([
+  'Leverage_Chest_Press', 'Leverage_Decline_Chest_Press', 'Leverage_Incline_Chest_Press', 'Leverage_High_Row',
+  'Leverage_Shoulder_Press', 'Leverage_Shrug', 'Leverage_Deadlift', 'Power_Stairs',
+]);
+
+/** The library's name for an exercise, replaced by what the machine is called on the gym floor. Search still finds the old name. */
+export const NAME_AT_GYM: Record<string, string> = {
+  Machine_Bench_Press: 'Chest Press (machine)',
+  Machine_Shoulder_Military_Press: 'Shoulder Press (machine)',
+  Leverage_Iso_Row: 'Supported Row (machine)',
+  Reverse_Machine_Flyes: 'Rear Delt Fly (machine)',
+  Butterfly: 'Pec Fly (machine)',
+  Dip_Machine: 'Assisted Dip (machine)',
+  Machine_Bicep_Curl: 'Preacher Curl (machine)',
 };
 
 // A few exercises need extra kit not captured by the generic mapping.

@@ -17,7 +17,7 @@ import { initNotifications, requestNotifyPermission } from '../../../src/lib/not
 import { refreshReminders } from '../../../src/lib/reminders';
 import { JETTS_NEWTOWN_TEMPLATE } from '../../../src/data/machines';
 import { isOwner } from '../../../src/lib/owner';
-import { GYM_VERSION, PlanSession, uid } from '../../../src/lib/planner';
+import { GYM_VERSION, PlanSession, repairPlan, uid } from '../../../src/lib/planner';
 import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
@@ -108,6 +108,14 @@ export default function DashboardScreen() {
       }
     })();
   }, [ready, profile?.id, session, plan?.data.gym]);
+
+  // Any exercise in the plan that the gym's equipment cannot do (an older plan, or one edited before the equipment list
+  // changed) is swapped for the next usable one in its slot, keeping your sets, reps and edits.
+  useEffect(() => {
+    if (!plan || !profile || !isOwner(session) || plan.data.gym !== GYM_VERSION) return;
+    const fixed = repairPlan(plan.data, new Set(profile.equipment));
+    if (fixed) savePlan(fixed).catch(() => {});
+  }, [plan?.data, profile?.equipment]);
 
   const isToday = date === todayISO();
   const dow = new Date(`${date}T12:00:00`).getDay();

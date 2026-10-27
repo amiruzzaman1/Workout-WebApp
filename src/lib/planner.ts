@@ -123,13 +123,13 @@ export const SLOTS: Record<string, string[]> = {
   leg_ext: ['Leg_Extensions', 'Split_Squat_with_Dumbbells'],
   glutes: ['Barbell_Hip_Thrust', 'Single_Leg_Glute_Bridge', 'Butt_Lift_Bridge', 'Pull_Through'],
   calves: ['Calf_Press_On_The_Leg_Press_Machine', 'Smith_Machine_Calf_Raise', 'Dumbbell_Seated_One-Leg_Calf_Raise'],
-  h_push: ['Machine_Bench_Press', 'Leverage_Chest_Press', 'Dumbbell_Bench_Press', 'Smith_Machine_Bench_Press', 'Barbell_Bench_Press_-_Medium_Grip', 'Pushups'],
-  incline_push: ['Leverage_Incline_Chest_Press', 'Incline_Dumbbell_Press', 'Smith_Machine_Incline_Bench_Press', 'Incline_Push-Up'],
+  h_push: ['Machine_Bench_Press', 'Dumbbell_Bench_Press', 'Smith_Machine_Bench_Press', 'Barbell_Bench_Press_-_Medium_Grip', 'Pushups'],
+  incline_push: ['Incline_Dumbbell_Press', 'Smith_Machine_Incline_Bench_Press', 'Incline_Push-Up'],
   chest_fly: ['Butterfly', 'Cable_Crossover', 'Dumbbell_Flyes', 'Incline_Dumbbell_Flyes'],
   v_pull: ['Wide-Grip_Lat_Pulldown', 'Close-Grip_Front_Lat_Pulldown', 'Underhand_Cable_Pulldowns', 'Pullups'],
-  h_pull: ['Leverage_Iso_Row', 'Seated_Cable_Rows', 'One-Arm_Dumbbell_Row', 'Bent_Over_Two-Dumbbell_Row', 'Leverage_High_Row'],
-  back_iso: ['Straight-Arm_Pulldown', 'Hyperextensions_Back_Extensions', 'Dumbbell_Incline_Row', 'Leverage_High_Row'],
-  v_push: ['Machine_Shoulder_Military_Press', 'Leverage_Shoulder_Press', 'Seated_Dumbbell_Press', 'Smith_Machine_Overhead_Shoulder_Press'],
+  h_pull: ['Leverage_Iso_Row', 'Seated_Cable_Rows', 'One-Arm_Dumbbell_Row', 'Bent_Over_Two-Dumbbell_Row'],
+  back_iso: ['Straight-Arm_Pulldown', 'Hyperextensions_Back_Extensions', 'Dumbbell_Incline_Row'],
+  v_push: ['Machine_Shoulder_Military_Press', 'Seated_Dumbbell_Press', 'Smith_Machine_Overhead_Shoulder_Press'],
   lateral: ['Side_Lateral_Raise', 'Cable_Seated_Lateral_Raise'],
   rear_delt: ['Reverse_Machine_Flyes', 'Face_Pull', 'Reverse_Flyes'],
   biceps: ['Dumbbell_Bicep_Curl', 'Machine_Bicep_Curl', 'Standing_Biceps_Cable_Curl', 'EZ-Bar_Curl'],
@@ -452,4 +452,29 @@ export function alternativesFor(item: PlanItem, equipment: Set<string>): string[
     }
   }
   return out;
+}
+
+/**
+ * Swaps any exercise in an existing plan that this gym cannot do (not available with the ticked equipment) for the next
+ * usable one in its slot, keeping your sets, reps and every other edit. Returns null when nothing needed changing.
+ */
+export function repairPlan(data: PlanData, equipment: Set<string>): PlanData | null {
+  let changed = false;
+  const days = data.days.map((d) => ({
+    ...d,
+    sessions: d.sessions.map((s) => ({
+      ...s,
+      items: s.items.flatMap((it) => {
+        const e = getExercise(it.exerciseId);
+        if (!e || isAvailable(e, equipment)) return [it];
+        changed = true;
+        const alt = alternativesFor(it, equipment)[0];
+        if (!alt) return [];
+        const next: PlanItem = { ...it, exerciseId: alt, metric: metricFor(alt) };
+        if (!cardioKind(alt)) delete next.cardio;
+        return [next];
+      }),
+    })),
+  }));
+  return changed ? { ...data, days } : null;
 }

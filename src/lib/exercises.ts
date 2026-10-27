@@ -1,5 +1,5 @@
 import raw from '../data/exercises.json';
-import { EQUIPMENT_TO_KEY, EXERCISE_NEEDS, EXERCISE_TO_MACHINE, MACHINE_BY_KEY } from '../data/machines';
+import { EQUIPMENT_TO_KEY, EXERCISE_NEEDS, EXERCISE_TO_MACHINE, MACHINE_BY_KEY, NAME_AT_GYM, NOT_AT_GYM } from '../data/machines';
 
 export type Exercise = {
   id: string;
@@ -17,6 +17,11 @@ export type Exercise = {
 };
 
 export const EXERCISES = raw as Exercise[];
+/** The library's own names, kept so a search for the old name still finds the renamed exercise. */
+export const ORIGINAL_NAME: Record<string, string> = {};
+for (const e of EXERCISES) {
+  if (NAME_AT_GYM[e.id]) { ORIGINAL_NAME[e.id] = e.name; e.name = NAME_AT_GYM[e.id]; }
+}
 const BY_ID: Record<string, Exercise> = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 
 let customById: Record<string, Exercise> = {};
@@ -67,6 +72,7 @@ export function titleCase(s: string) {
 export function requiredKey(e: Exercise): string | null | 'unknown' {
   if (e.custom) return null;
   if (e.category === 'stretching') return null; // mobility work needs no kit
+  if (NOT_AT_GYM.has(e.id)) return 'unknown';
   if (e.id in EXERCISE_NEEDS) return EXERCISE_NEEDS[e.id];
   if (EXERCISE_TO_MACHINE[e.id]) return EXERCISE_TO_MACHINE[e.id];
   if (e.equipment in EQUIPMENT_TO_KEY) return EQUIPMENT_TO_KEY[e.equipment];

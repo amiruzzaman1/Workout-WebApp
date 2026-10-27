@@ -1,7 +1,7 @@
 // Plain language descriptions and forgiving search for the exercise list, for when you do not know an exercise by
 // its proper name. You can type what you want to train ("belly", "bum", "back of legs"), what you use ("cable",
 // "treadmill") or half a name ("lat pull"), and spelling slips still find it.
-import { Exercise, needsLabel, requiredKey } from './exercises';
+import { Exercise, needsLabel, ORIGINAL_NAME, requiredKey } from './exercises';
 
 /** The app's muscle names in everyday words, shown in descriptions and also searchable. */
 export const PLAIN_MUSCLE: Record<string, string> = {
@@ -85,7 +85,7 @@ function entryFor(e: Exercise): Entry {
   const muscles = words4(e.secondary.slice(0, 2));
   const gear = requiredKey(e);
   const gearWords = gear === null ? 'bodyweight no equipment' : gear === 'unknown' ? e.equipment : `${needsLabel(e)} ${e.equipment}`;
-  const words = norm(`${muscles} ${gearWords} ${e.category} ${e.level} ${e.force ?? ''} ${e.mechanic ?? ''} ${themes}`);
+  const words = norm(`${ORIGINAL_NAME[e.id] ?? ''} ${muscles} ${gearWords} ${e.category} ${e.level} ${e.force ?? ''} ${e.mechanic ?? ''} ${themes}`);
   x = { name, nameWords: name.split(' '), primary, words, steps: norm((e.steps ?? []).slice(0, 2).join(' ')) };
   INDEX.set(e.id, x);
   return x;
