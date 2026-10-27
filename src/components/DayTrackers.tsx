@@ -9,7 +9,7 @@ import { shiftISO } from '../lib/streak';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
 import {
-  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmt12, fmtMinutes, hhmmOf, isTime, minutesBetween, nowClock, rangeText, rawMinutesBetween, Segment, segmentsOf, sleepFix, sleepVerdict,
+  ACTIVITY_CATEGORIES, ActivityLog, clockOf, fmt12, fmtMinutes, hhmmOf, isTime, minutesBetween, nowClock, rangeText, rawMinutesBetween, Segment, segmentsOf, sleepFix, sleepVerdict, tasksForDay,
 } from '../lib/tracker';
 import { dayLabel } from './AppHeader';
 import { TimeField } from './TimeField';
@@ -321,7 +321,7 @@ export function TimeTrackerCard({ date }: { date: string }) {
   const q = key(title);
   // Tasks planned for this day come first (not done, then done), then names used before in this category.
   const planned = useMemo(() => {
-    const day = tasks.filter((t) => t.day === date && key(t.title) !== q && (!q || key(t.title).includes(q)));
+    const day = tasksForDay(tasks, date, todayISO()).filter((t) => key(t.title) !== q && (!q || key(t.title).includes(q)));
     return [...day.filter((t) => !t.done), ...day.filter((t) => t.done)].slice(0, 4);
   }, [tasks, date, q]);
   const suggestions = useMemo(() => {

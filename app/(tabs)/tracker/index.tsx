@@ -1,13 +1,15 @@
 import { useRouter } from 'expo-router';
 import { SleepCard, TimeTrackerCard } from '../../../src/components/DayTrackers';
 import { Button, H1, P, Screen } from '../../../src/components/ui';
+import { todayISO } from '../../../src/lib/progress';
 import { useStore } from '../../../src/lib/store';
+import { tasksForDay } from '../../../src/lib/tracker';
 import { A } from '../../../src/lib/theme';
 
 export default function TimeScreen() {
   const { date, tasks, alarms } = useStore();
   const router = useRouter();
-  const day = tasks.filter((t) => t.day === date);
+  const day = tasksForDay(tasks, date, todayISO());
   const left = day.filter((t) => !t.done).length;
   return (
     <Screen>

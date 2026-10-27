@@ -14,7 +14,7 @@ import { VIBRATION_LABEL } from '../../../src/lib/alarms';
 import { AlarmVibration, MAX_ALARM_REPEATS } from '../../../src/lib/notify';
 import { useStore } from '../../../src/lib/store';
 import { A, C, F, R } from '../../../src/lib/theme';
-import { fmt12, fmtMinutes, TaskItem } from '../../../src/lib/tracker';
+import { fmt12, fmtMinutes, TaskItem, tasksForDay } from '../../../src/lib/tracker';
 
 const key = (t: string) => t.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -22,7 +22,7 @@ const key = (t: string) => t.trim().toLowerCase().replace(/\s+/g, ' ');
  * A tick box like Google Keep's: the box fills and a tick pops in, and a line is drawn through the middle of the
  * task while its words fade. Nothing is removed, so the task stays on the page, struck through, until you untick it.
  */
-function TaskRow({ task, tracked, color, onToggle, onEdit, onDelete }: { task: TaskItem; tracked: number; color: string; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
+function TaskRow({ task, from, tracked, color, onToggle, onEdit, onDelete }: { task: TaskItem; from?: string; tracked: number; color: string; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
   const p = useRef(new Animated.Value(task.done ? 1 : 0)).current;
   const still = useRef(false);
   useEffect(() => { AccessibilityInfo.isReduceMotionEnabled?.().then((v) => { still.current = v; }).catch(() => {}); }, []);
@@ -50,7 +50,7 @@ function TaskRow({ task, tracked, color, onToggle, onEdit, onDelete }: { task: T
           <Animated.View pointerEvents="none" style={[s.strike, { width: line }]} />
         </View>
         <Text style={s.meta} numberOfLines={1}>
-          {task.category ?? 'Other'}
+          {from ? `From ${dayLabel(from)} · ` : ''}{task.category ?? 'Other'}
           {task.target_minutes ? ` · target ${fmtMinutes(task.target_minutes)}` : ''}
           {tracked > 0 ? ` · tracked ${fmtMinutes(tracked)}` : ''}
         </Text>
@@ -234,7 +234,7 @@ export default function Tasks() {
   const [remindEditing, setRemindEditing] = useState<string | null>(null);
   const [addingReminder, setAddingReminder] = useState(false);
 
-  const day = tasks.filter((t) => t.day === date);
+  const day = tasksForDay(tasks, date, todayISO());
   const done = day.filter((t) => t.done).length;
   const trackedFor = (t: TaskItem) => activities.filter((a) => a.day === date && key(a.title) === key(t.title)).reduce((n, a) => n + (a.minutes ?? 0), 0);
 
@@ -265,7 +265,7 @@ export default function Tasks() {
       <Stack.Screen options={{ title: '' }} />
       <Eyebrow>{dayLabel(date)} · Tracker</Eyebrow>
       <H1>Tasks</H1>
-      <P muted style={{ fontSize: 13, lineHeight: 19 }}>Plan what you want to get done. Pick another day at the top to plan ahead. These show up as suggestions when you start the time tracker.</P>
+      <P muted style={{ fontSize: 13, lineHeight: 19 }}>Plan what you want to get done. Pick another day at the top to plan ahead. A task you do not tick moves on to the next day by itself and stays until you check it off. These show up as suggestions when you start the time tracker.</P>
 
       <View style={s.form}>
         <Label>New task</Label>
@@ -294,7 +294,7 @@ export default function Tasks() {
             editing === t.id ? (
               <EditTask key={t.id} task={t} categories={categories} others={day} onCancel={() => setEditing(null)} onDelete={() => remove(t).then(() => setEditing(null))} onSave={async (ch) => { await updateTask(t.id, ch); setEditing(null); }} />
             ) : (
-              <TaskRow key={t.id} task={t} tracked={trackedFor(t)} color={catColor(t.category)} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} onDelete={() => remove(t)} />
+              <TaskRow key={t.id} task={t} from={t.day !== date ? t.day : undefined} tracked={trackedFor(t)} color={catColor(t.category)} onToggle={() => toggle(t)} onEdit={() => setEditing(t.id)} onDelete={() => remove(t)} />
             )
           ))}
           {day.length === 0 && <P muted style={{ fontSize: 13 }}>Nothing planned for this day yet.</P>}

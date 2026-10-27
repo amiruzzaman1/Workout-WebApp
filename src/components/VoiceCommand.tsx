@@ -11,7 +11,7 @@ import { recipeToFood } from '../lib/recipes';
 import { REPEAT_LABEL } from '../lib/reminders';
 import { useStore } from '../lib/store';
 import { A, C, F, R } from '../lib/theme';
-import { fmt12, isTime, minutesBetween, segmentsOf } from '../lib/tracker';
+import { fmt12, isTime, minutesBetween, segmentsOf, tasksForDay } from '../lib/tracker';
 import { hasDestructive, parseVoiceCommand, VoiceContext, VoiceIntent } from '../lib/voiceParse';
 import { preload as preloadDictionary, remember } from '../lib/voiceDictionary';
 import { todayISO } from '../lib/progress';
@@ -64,7 +64,7 @@ export function VoiceCommand() {
   });
 
   const todayFoodEntries = foodEntries.filter((e) => e.eaten_on === todayISO());
-  const todayTasks = tasks.filter((t) => t.day === todayISO());
+  const todayTasks = tasksForDay(tasks, todayISO(), todayISO());
   const exercises = [...EXERCISES, ...customExercises];
   const todaySleep = sleep.find((s) => s.night_of === todayISO()) ?? null;
 

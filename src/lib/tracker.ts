@@ -148,4 +148,20 @@ export type TaskItem = {
   done_at?: string | null;
 };
 
+const localISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * The tasks to show for a day. Anything planned for that day, plus every earlier task that was never ticked: it
+ * piles up and follows you from day to day until you check it off (looking at today or a future day). A task that
+ * was ticked on a later day stays visible, ticked, on the day it was finished. Looking back at a past day shows
+ * only what was planned for it. Carried tasks come first, oldest first.
+ */
+export function tasksForDay(tasks: TaskItem[], day: string, today: string): TaskItem[] {
+  const own = tasks.filter((t) => t.day === day);
+  const carried = tasks
+    .filter((t) => t.day < day && (day >= today ? !t.done || (!!t.done_at && localISO(new Date(t.done_at)) === day) : !!t.done && !!t.done_at && localISO(new Date(t.done_at)) === day))
+    .sort((a, b) => a.day.localeCompare(b.day));
+  return [...carried, ...own];
+}
+
 export type WeightLog = { day: string; kg: number | null; waist_cm: number | null };

@@ -22,6 +22,7 @@ import { todayISO } from '../../../src/lib/progress';
 import { QUOTE_EVERY_MS, randomQuote } from '../../../src/lib/quotes';
 import { useStore } from '../../../src/lib/store';
 import { currentStreak, daysSinceLastLog, loggedDaySet } from '../../../src/lib/streak';
+import { tasksForDay } from '../../../src/lib/tracker';
 import { A, C, F, R, TYPE } from '../../../src/lib/theme';
 
 export default function DashboardScreen() {
@@ -59,7 +60,7 @@ export default function DashboardScreen() {
   // The two hourly pulses and the "come back" nudges below. No server behind these, so this just works out the
   // next one each time the Dashboard is open and (re)schedules it; see src/lib/dailyNotifications.ts and
   // src/lib/notify.ts for what that means on the web versus on the phone.
-  const todayTasks = useMemo(() => tasks.filter((t) => t.day === todayStr), [tasks, todayStr]);
+  const todayTasks = useMemo(() => tasksForDay(tasks, todayStr, todayStr), [tasks, todayStr]);
   const todayUndone = todayTasks.filter((t) => !t.done).length;
   const todayDow = new Date(`${todayStr}T12:00:00`).getDay();
   const todaysPlannedSessions = plan ? plan.data.days.find((d) => d.day === todayDow)?.sessions ?? [] : [];
