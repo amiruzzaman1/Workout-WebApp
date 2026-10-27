@@ -4,6 +4,7 @@ import { Modal, Pressable, Text, View } from 'react-native';
 import { CardioFields } from '../../../../../src/components/CardioFields';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { ExerciseList } from '../../../../../src/components/ExerciseList';
+import { GymThumb } from '../../../../../src/components/GymPhoto';
 import { Button, Card, Chip, hovered, Input, Label, P, Row, Screen, smooth } from '../../../../../src/components/ui';
 import { cardioKind, estimateCardio, whoFrom } from '../../../../../src/lib/cardio';
 import { confirm } from '../../../../../src/lib/confirm';
@@ -98,6 +99,7 @@ export default function SessionEditor() {
             <Card key={it.uid} style={{ borderLeftWidth: 3, borderLeftColor: e ? groupColor(groupOf(e)) : C.border }}>
               <Pressable onPress={() => e && router.push(`/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" style={(p) => [{ flexDirection: 'row', gap: 12, alignItems: 'center', borderRadius: 8 }, smooth, hovered(p) && { backgroundColor: C.card2 }]}>
                 {e && <ExerciseThumb exercise={e} />}
+                {e && <GymThumb exercise={e} />}
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: C.text, fontFamily: F.bodySemi, fontSize: 16 }}>{i + 1}. {e?.name ?? it.exerciseId}</Text>
                   <Text style={{ color: e ? groupColor(groupOf(e)) : C.muted, fontSize: 13, fontFamily: F.bodyMed }}>{e?.primary.map(titleCase).join(', ')} <Text style={{ color: C.muted, fontFamily: F.body }}>· tap for how-to</Text></Text>

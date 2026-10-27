@@ -5,6 +5,7 @@ import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CardioFields } from '../../../../../src/components/CardioFields';
 import { ExerciseList } from '../../../../../src/components/ExerciseList';
+import { GymCaption, GymThumb } from '../../../../../src/components/GymPhoto';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
 import { Button, Eyebrow, H1, hovered, HoverTip, P, Row, Screen, smooth } from '../../../../../src/components/ui';
 import { cardioKind, estimateCardio, whoFrom } from '../../../../../src/lib/cardio';
@@ -268,6 +269,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
     <View style={st.block}>
       <Pressable onPress={() => router.push(`/exercise/${encodeURIComponent(e.id)}`)} accessibilityRole="button" accessibilityLabel={`How to do ${e.name}`} style={(p) => [{ flexDirection: 'row', gap: 14, alignItems: 'center', borderRadius: R.sm }, smooth, hovered(p) && { backgroundColor: C.card }]}>
         <ExerciseThumb exercise={e} size={compact ? 44 : 56} />
+        <GymThumb exercise={e} size={compact ? 44 : 56} />
         <View style={{ flex: 1, gap: 3 }}>
           <Text style={[st.idx, { color: groupColor(groupOf(e)) }]}>
             {groupOf(e).toUpperCase()}{complete ? '  ·  DONE' : ''}
@@ -276,6 +278,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
           <Text style={st.meta}>
             {item.sets} × {item.reps} {METRIC_SHORT[metric]}{item.restSec ? ` · rest ${item.restSec}s` : ''} · how-to
           </Text>
+          <GymCaption exercise={e} />
         </View>
       </Pressable>
 

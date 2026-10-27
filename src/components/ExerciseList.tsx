@@ -7,6 +7,7 @@ import { describe, scoreExercise } from '../lib/exerciseSearch';
 import { useStore } from '../lib/store';
 import { C, GROUP_COLORS } from '../lib/theme';
 import { GroupIcon } from './GroupIcon';
+import { GymThumb } from './GymPhoto';
 import { ExerciseThumb } from './ExerciseAnimation';
 import { AccentTile, hovered, Input, ListRow, Row, smooth } from './ui';
 import { F } from '../lib/theme';
@@ -98,7 +99,7 @@ export function ExerciseList({ onPick, header, top }: { onPick: (e: Exercise) =>
         <ListRow
           accent={GROUP_COLORS[groupOf(item)]}
           onPress={() => onPick(item)}
-          left={<ExerciseThumb exercise={item} />}
+          left={<Row style={{ gap: 6 }}><ExerciseThumb exercise={item} /><GymThumb exercise={item} /></Row>}
           title={item.name}
           subtitle={`${describe(item)} ${titleCase(item.level)}.`}
           right={<Ionicons name="chevron-forward" size={18} color={C.muted} />}

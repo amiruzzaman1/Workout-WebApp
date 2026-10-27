@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Text, View } from 'react-native';
+import { Image, ScrollView, Text, View } from 'react-native';
 import { BarChart } from '../../../../src/components/BarChart';
 import { ExerciseAnimation } from '../../../../src/components/ExerciseAnimation';
 import { GroupIcon } from '../../../../src/components/GroupIcon';
+import { gymPhotoFor } from '../../../../src/components/GymPhoto';
 import { Bullets, Button, Eyebrow, H1, P, Row, Screen, Section } from '../../../../src/components/ui';
 import { MACHINE_BY_KEY } from '../../../../src/data/machines';
 import { metricFor } from '../../../../src/lib/planner';
@@ -12,7 +13,7 @@ import { getExercise, groupOf, isAvailable, requiredKey, titleCase } from '../..
 import { groupColor } from '../../../../src/lib/groups';
 import { fmtWeight, sessionsFor, suggest, todayISO, workingWeight } from '../../../../src/lib/progress';
 import { useStore } from '../../../../src/lib/store';
-import { A, C, F } from '../../../../src/lib/theme';
+import { A, C, F, R } from '../../../../src/lib/theme';
 
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,6 +37,7 @@ export default function ExerciseDetail() {
   const key = requiredKey(e);
   const machine = key && key !== 'unknown' ? MACHINE_BY_KEY[key] : undefined;
   const available = isAvailable(e, equipment);
+  const gym = gymPhotoFor(e);
   const unit = history[0]?.unit ?? 'kg';
   const chart = history.slice(0, 12).reverse().map((s) => {
     const w = workingWeight(s);
@@ -76,6 +78,17 @@ export default function ExerciseDetail() {
         <Row style={{ marginTop: 4 }}>
           <Button kind="secondary" small icon="construct-outline" tint={A.fat} title={`How to set up the ${machine.name}`} onPress={() => router.push(`/library/machine/${machine.key}`)} />
         </Row>
+      )}
+
+      {gym && (
+        <Section title={`Use this at your gym: ${gym.name}`} icon="location-outline" color={A.protein}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {gym.photos.map((src, i) => (
+              <Image key={i} source={src} resizeMode="contain" accessibilityLabel={`${gym.name} at your gym, photo ${i + 1}`}
+                style={{ width: 230, height: 280, borderRadius: R.md, backgroundColor: C.card }} />
+            ))}
+          </ScrollView>
+        </Section>
       )}
 
       {sug && sug.kind !== 'none' && (

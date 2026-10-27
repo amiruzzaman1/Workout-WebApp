@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
+import { SessionPreview } from '../../../src/components/SessionPreview';
 import { Button, Eyebrow, H1, hovered, IconBadge, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
 import { useCoachStyle } from '../../../src/lib/coachStyle';
@@ -28,6 +29,7 @@ import { A, C, F, R, TYPE } from '../../../src/lib/theme';
 export default function DashboardScreen() {
   const { plan, logs, savePlan, regeneratePlan, setEquipment, ready, session, activeVisit, startVisit, date, profile, foodEntries, tasks, reminders, alarms, progressPhotos, water, sleep, weights } = useStore();
   const router = useRouter();
+  const [preview, setPreview] = useState<number | null>(null);
   const [coachStyle] = useCoachStyle();
   const [quote, setQuote] = useState(() => randomQuote());
   const [seed, setSeed] = useState(() => Math.random());
@@ -201,14 +203,21 @@ export default function DashboardScreen() {
                     </View>
                   ))}
                 </Row>
-                <H1 style={st.workoutTitle}>{s.title}</H1>
+                <Pressable onPress={() => setPreview(i)} accessibilityRole="button" accessibilityLabel={`See all exercises in ${s.title}`}
+                  style={(p) => [{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', borderRadius: R.sm }, smooth, hovered(p) && { opacity: 0.75 }]}>
+                  <H1 style={st.workoutTitle}>{s.title}</H1>
+                  <Ionicons name="chevron-forward-circle-outline" size={22} color={C.muted} />
+                </Pressable>
                 <P muted style={{ fontSize: 13, lineHeight: 19 }}>
                   {work.length} exercises · {work.reduce((a, it) => a + (it.sets || 0), 0)} sets
                   {daySets > 0 && i === 0 ? ` · ${daySets} sets logged` : ''}
                 </P>
-                <Text style={st.preview} numberOfLines={2}>
-                  {work.map((it) => getExercise(it.exerciseId)?.name ?? it.exerciseId).join('  /  ')}
-                </Text>
+                <Pressable onPress={() => setPreview(i)} accessibilityRole="button" accessibilityLabel="See all exercises">
+                  <Text style={st.preview} numberOfLines={2}>
+                    {work.map((it) => getExercise(it.exerciseId)?.name ?? it.exerciseId).join('  /  ')}
+                  </Text>
+                  <Text style={{ color: A.protein, fontFamily: F.bodySemi, fontSize: 12, marginTop: 4 }}>See all exercises and where to do them</Text>
+                </Pressable>
                 <Row style={{ marginTop: 6 }}>
                   <Button
                     icon="play"
@@ -223,6 +232,12 @@ export default function DashboardScreen() {
           })
         )}
       </Section>
+      <SessionPreview
+        session={preview != null ? sessions[preview] ?? null : null} visible={preview != null} onClose={() => setPreview(null)}
+        onOpenExercise={(id) => { setPreview(null); router.push(`/exercise/${encodeURIComponent(id)}`); }}
+        startLabel={startLabel}
+        onStart={() => { const i = preview ?? 0; const sess = sessions[i]; setPreview(null); if (sess) { if (isToday && !activeVisit) startVisit(sess.title); router.push(`/workout/${dow}/${i}?date=${date}`); } }}
+      />
     </Screen>
   );
 }
