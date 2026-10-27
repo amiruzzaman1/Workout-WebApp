@@ -24,6 +24,8 @@ export type Alarm = {
   /** How many times it rings/buzzes, a few seconds apart; 1 to 6. */
   repeat_count: number;
   enabled: boolean;
+  /** One of ALARM_SOUNDS' ids in alarmSounds.ts. Missing or 'default' means the phone's own sound. */
+  sound_id?: string;
 };
 
 export const REPEAT_LABEL: Record<AlarmRepeat, string> = { once: 'Once', daily: 'Every day', weekly: 'Certain days' };
@@ -60,14 +62,30 @@ export function nextOccurrence(a: Alarm, from = new Date()): Date | null {
   return null;
 }
 
-/** (Re)schedules every alarm for whenever it is next due. Call this again whenever the list changes. */
+/** Every time this alarm goes off in the next `days` days, soonest first. A daily alarm gives one per day, so it keeps
+ *  ringing for a week without the app being opened; the Dashboard tops it up whenever it opens. */
+export function upcomingOccurrences(a: Alarm, days = 7, from = new Date()): Date[] {
+  const out: Date[] = [];
+  const end = from.getTime() + days * 864e5;
+  let cursor = from;
+  for (let i = 0; i < 30; i++) {
+    const next = nextOccurrence(a, cursor);
+    if (!next || next.getTime() > end) break;
+    out.push(next);
+    if (a.repeat === 'once') break;
+    cursor = new Date(next.getTime() + 60_000);
+  }
+  return out;
+}
+
+/** (Re)schedules every alarm for its coming days. Call this again whenever the list changes. */
 export function refreshAlarms(alarms: Alarm[]) {
   for (const a of alarms) {
     const id = `alarm-${a.id}`;
-    const when = nextOccurrence(a);
-    if (!when) { cancelAlarmAt(id); continue; }
+    const whens = upcomingOccurrences(a);
+    if (!whens.length) { cancelAlarmAt(id); continue; }
     const vibration: AlarmVibration = a.vibrate ? a.vibration_pattern : 'none';
-    const channelId = alarmChannelId(vibration, a.sound);
-    scheduleAlarmAt(id, when, a.label || 'Alarm', 'Tap to open Forge', channelId, a.repeat_count);
+    const channelId = alarmChannelId(vibration, a.sound, a.sound_id);
+    scheduleAlarmAt(id, whens, a.label || 'Alarm', 'Tap to open Forge', channelId, a.repeat_count, { vibration, soundId: a.sound ? a.sound_id : null });
   }
 }

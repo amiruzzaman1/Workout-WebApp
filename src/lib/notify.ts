@@ -8,6 +8,7 @@
 // Keeping the tab open is the honest limit of a notification with no server behind it; a closer phone-like result
 // would need a small backend sending real push notifications, which this app does not have.
 import { Platform } from 'react-native';
+import { playSound, soundFileName } from './alarmSounds';
 
 const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
 // expo-notifications only on native: it has no real scheduler on web, so it is never imported there.
@@ -125,8 +126,25 @@ export type AlarmVibration = 'none' | 'short' | 'double' | 'long';
 const ALARM_VIBRATION: Record<AlarmVibration, number[] | null> = {
   none: null, short: [0, 250], double: [0, 150, 120, 150], long: [0, 900],
 };
-export function alarmChannelId(vibration: AlarmVibration, sound: boolean): string {
+export function alarmChannelId(vibration: AlarmVibration, sound: boolean, soundId?: string | null): string {
+  if (sound && soundId && soundId !== 'default') return `alarm-${vibration}-${soundId}`;
   return `alarm-${vibration}-${sound ? 'sound' : 'silent'}`;
+}
+
+/** A picked alarm sound needs its own channel (Android only takes sound from the channel), made the first time it is
+ *  used so the phone's settings do not fill up with channels nobody picked. */
+async function ensureAlarmChannel(vibration: AlarmVibration, soundId: string) {
+  if (!isNative) return;
+  await Notifications.setNotificationChannelAsync(alarmChannelId(vibration, true, soundId), {
+    name: `Alarm (${soundId.replace('alarm_', '')}, ${vibration === 'none' ? 'no vibration' : vibration})`,
+    importance: Notifications.AndroidImportance.MAX,
+    sound: soundFileName(soundId),
+    vibrationPattern: ALARM_VIBRATION[vibration],
+    enableVibrate: !!ALARM_VIBRATION[vibration],
+    bypassDnd: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    audioAttributes: { usage: Notifications.AndroidAudioUsage.ALARM },
+  });
 }
 
 /** Asks once; android 13+ and the browser both need this before anything can show. Returns whether it is allowed. */
@@ -214,19 +232,46 @@ export const MAX_ALARM_REPEATS = 6;
 
 /** An alarm "ringing" a few times is not one native concept on Android, there is no "repeat this sound and
  *  vibration N times" option, so this posts the same notification N times a few seconds apart instead, each
- *  one triggering the channel's sound and vibration pattern on its own. Scheduling the same id again (the
- *  alarm changed, or it is just being refreshed) replaces every one of the previous copies first. */
-export function scheduleAlarmAt(id: string, when: Date, title: string, body: string, channelId: string, repeatCount: number) {
-  cancelAlarmAt(id);
-  const ms = when.getTime() - Date.now();
-  if (ms <= 0) return;
-  for (let i = 0; i < repeatCount; i++) {
-    scheduleAt(`${id}-${i}`, new Date(when.getTime() + i * 3000), title, body, channelId);
+ *  one triggering the channel's sound and vibration pattern on its own. `whens` can be several upcoming days, so a
+ *  daily alarm keeps going for the next week even if the app is never opened. Scheduling the same id again (the
+ *  alarm changed, or it is just being refreshed) replaces every earlier copy first. On the web the picked sound is
+ *  played by the page when each one goes off (a browser notification cannot carry a custom sound). */
+export function scheduleAlarmAt(
+  id: string, whens: Date | Date[], title: string, body: string, channelId: string, repeatCount: number,
+  extra?: { vibration: AlarmVibration; soundId?: string | null },
+) {
+  const list = (Array.isArray(whens) ? whens : [whens]).filter((d) => d.getTime() > Date.now());
+  (async () => {
+    await cancelAlarmAtAsync(id);
+    if (isNative && extra?.soundId && extra.soundId !== 'default') await ensureAlarmChannel(extra.vibration, extra.soundId).catch(() => {});
+    list.forEach((when, n) => {
+      for (let i = 0; i < repeatCount; i++) {
+        const at = new Date(when.getTime() + i * 3000);
+        const key = `${id}-${n}-${i}`;
+        if (isNative) scheduleAt(key, at, title, body, channelId);
+        else {
+          const ms = Math.min(at.getTime() - Date.now(), 2000000000);
+          webTimers.set(key, setTimeout(() => { webTimers.delete(key); showWebNotification(title, body); if (i === 0) playSound(extra?.soundId); }, ms));
+        }
+      }
+    });
+  })();
+}
+
+async function cancelAlarmAtAsync(id: string) {
+  const prefix = id + '-';
+  if (isNative) {
+    try {
+      const all = await Notifications.getAllScheduledNotificationsAsync();
+      await Promise.all(all.filter((n: any) => String(n.identifier).startsWith(prefix)).map((n: any) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+    } catch { /* nothing to clear */ }
+  } else {
+    for (const [k, t] of [...webTimers.entries()]) if (k.startsWith(prefix)) { clearTimeout(t); webTimers.delete(k); }
   }
 }
 
 export function cancelAlarmAt(id: string) {
-  for (let i = 0; i < MAX_ALARM_REPEATS; i++) cancelScheduled(`${id}-${i}`);
+  cancelAlarmAtAsync(id);
 }
 
 // ---------------- the running timer's own ongoing notification ----------------

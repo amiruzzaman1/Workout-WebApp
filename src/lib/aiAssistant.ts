@@ -97,6 +97,8 @@ function systemPrompt(ctx: VoiceContext): string {
     '- stop_timer: {kind}',
     '- add_task: {kind,label,category}',
     '- delete_task: {kind,label}',
+    '- add_category: {kind,label}  (a new time tracker category, label is its name, one or two words)',
+    '- remove_category: {kind,label}  (label must be one of the time categories listed below)',
     '- log_food: {kind,label,amount,unit,meal}  (amount and unit optional, unit one of g,ml,kg,l,tsp,tbsp,cup,piece)',
     '- delete_food: {kind,label}',
     '- log_weight: {kind,amount}',
@@ -178,6 +180,12 @@ export function resolveLlmOutput(raw: string, ctx: VoiceContext): VoiceIntent {
       return { kind: 'stop_timer' };
     case 'add_task':
       return label ? { kind: 'add_task', title: label, category: typeof o.category === 'string' ? o.category : null } : fallback;
+    case 'add_category':
+      return label ? { kind: 'add_category', name: label.slice(0, 24) } : fallback;
+    case 'remove_category': {
+      const real = label ? ctx.categories.find((c) => c.toLowerCase() === label.toLowerCase()) : null;
+      return real ? { kind: 'remove_category', name: real } : fallback;
+    }
     case 'delete_task': {
       const task = label ? findByTitle<TaskItem>(label, ctx.todayTasks, (x) => x.title) : null;
       return task ? { kind: 'delete_task', task } : fallback;

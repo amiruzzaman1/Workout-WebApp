@@ -490,3 +490,6 @@ grant select, insert, update, delete on public.food_measures to authenticated;
 alter table public.reminders add column if not exists style text not null default 'normal' check (style in ('silent', 'normal', 'alarm'));
 alter table public.reminders add column if not exists vibration_pattern text not null default 'short' check (vibration_pattern in ('short', 'double', 'long'));
 alter table public.reminders add column if not exists repeat_count smallint not null default 3 check (repeat_count between 1 and 6);
+
+-- v22: which alarm sound each alarm uses (one of the ten in src/lib/alarmSounds.ts, or 'default' for the phone's own).
+alter table public.alarms add column if not exists sound_id text not null default 'default';

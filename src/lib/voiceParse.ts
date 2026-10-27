@@ -18,6 +18,8 @@ export type VoiceIntent =
   | { kind: 'start_timer'; label: string; isGym: boolean; category: string | null }
   | { kind: 'stop_timer' }
   | { kind: 'add_task'; title: string; category: string | null }
+  | { kind: 'add_category'; name: string }
+  | { kind: 'remove_category'; name: string }
   | { kind: 'delete_task'; task: TaskItem }
   | { kind: 'log_food'; food: Food; amount: number; unit: string; meal: Meal; note?: string }
   | { kind: 'delete_food'; entry: FoodEntry }
@@ -36,7 +38,7 @@ export type VoiceIntent =
 
 /** Which of these actions remove something, so the caller can ask twice before doing it. */
 export function isDestructive(kind: VoiceIntent['kind']): boolean {
-  return kind === 'delete_task' || kind === 'delete_food' || kind === 'delete_reminder';
+  return kind === 'delete_task' || kind === 'delete_food' || kind === 'delete_reminder' || kind === 'remove_category';
 }
 
 /** Same thing, but looking inside a 'multi' command too, since "delete the task to call mum and start my
@@ -250,6 +252,19 @@ function parseSingle(transcript: string, ctx: VoiceContext): VoiceIntent {
   if (!t) return { kind: 'unknown', transcript };
 
   if (ctx.runningLabel && /\b(stop|end|finish|pause)\b/.test(t)) return { kind: 'stop_timer' };
+
+  // Time tracker categories: "add a category called Reading", "new category Gaming", "remove the category Admin".
+  const addCatMatch = t.match(/\b(?:add|create|make|new)\s+(?:an?\s+)?(?:new\s+)?(?:time\s+)?(?:tracker\s+)?categor(?:y|ies)(?:\s+(?:called|named|for))?\s+(.+)/);
+  if (addCatMatch && addCatMatch[1].trim()) {
+    const name = cleanLabel(addCatMatch[1]).slice(0, 24);
+    if (name) return { kind: 'add_category', name };
+  }
+  const removeCatMatch = t.match(/\b(?:remove|delete|get rid of)\s+(?:the\s+)?(?:time\s+)?(?:tracker\s+)?categor(?:y|ies)(?:\s+(?:called|named))?\s+(.+)/);
+  if (removeCatMatch) {
+    const spoken = norm(removeCatMatch[1]);
+    const real = ctx.categories.find((c) => norm(c) === spoken) ?? ctx.categories.find((c) => spoken.includes(norm(c)));
+    if (real) return { kind: 'remove_category', name: real };
+  }
 
   // Going to bed or waking up: the same two things the Sleep card's "Bed now" and "Woke now" buttons already
   // do, just said instead of tapped. The clock time is captured once here, not read again at save time, so

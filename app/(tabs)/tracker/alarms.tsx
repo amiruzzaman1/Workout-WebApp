@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Alarm, AlarmRepeat, nextOccurrence, REPEAT_LABEL, VIBRATION_LABEL } from '../../../src/lib/alarms';
+import { ALARM_SOUNDS, playSound, soundLabel, stopSound } from '../../../src/lib/alarmSounds';
 import { CalendarModal } from '../../../src/components/CalendarModal';
 import { TimeField } from '../../../src/components/TimeField';
 import { Button, Chip, Eyebrow, H1, hovered, Input, Label, P, Row, Screen, Section, smooth, Stepper } from '../../../src/components/ui';
@@ -67,6 +68,7 @@ function AlarmRow({ a, onToggle, onEdit, onDelete }: { a: Alarm; onToggle: () =>
         </Row>
         <Row style={{ gap: 10, marginTop: 6 }}>
           <Ionicons name={a.sound ? 'volume-high-outline' : 'volume-mute-outline'} size={14} color={a.sound ? C.muted : C.faint} />
+          {a.sound && <Text style={s.metaSmall}>{soundLabel(a.sound_id)}</Text>}
           <Ionicons name="phone-portrait-outline" size={14} color={a.vibrate ? C.muted : C.faint} />
           {a.vibrate && <Text style={s.metaSmall}>{VIBRATION_LABEL[a.vibration_pattern]}</Text>}
           <Text style={s.metaSmall}>· rings {a.repeat_count}×</Text>
@@ -93,6 +95,9 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
   const [date, setDate] = useState(initial?.alarm_date ?? todayISO());
   const [calendar, setCalendar] = useState(false);
   const [sound, setSound] = useState(initial?.sound ?? true);
+  const [soundId, setSoundId] = useState<string>(initial?.sound_id ?? 'default');
+  const [playing, setPlaying] = useState<string | null>(null);
+  useEffect(() => () => stopSound(), []);
   const [vibrate, setVibrate] = useState(initial?.vibrate ?? true);
   const [pattern, setPattern] = useState<Exclude<AlarmVibration, 'none'>>(initial?.vibration_pattern ?? 'short');
   const [repeatCount, setRepeatCount] = useState(initial?.repeat_count ?? 3);
@@ -111,7 +116,7 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
       await onSave({
         label: label.trim().slice(0, 80), alarm_time: time, repeat,
         days: repeat === 'weekly' ? days : [], alarm_date: repeat === 'once' ? date : null,
-        sound, vibrate, vibration_pattern: pattern, repeat_count: repeatCount, enabled: initial?.enabled ?? true,
+        sound, sound_id: soundId, vibrate, vibration_pattern: pattern, repeat_count: repeatCount, enabled: initial?.enabled ?? true,
       });
     } catch (e: any) {
       setError(e?.message ?? 'Could not save. Check your connection and try again.');
@@ -147,8 +152,37 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
       <Label>Sound</Label>
       <Row style={{ gap: 6 }}>
         <Chip label="On" active={sound} onPress={() => setSound(true)} />
-        <Chip label="Off" active={!sound} onPress={() => setSound(false)} />
+        <Chip label="Off" active={!sound} onPress={() => { setSound(false); stopSound(); setPlaying(null); }} />
       </Row>
+      {sound && (
+        <View style={{ gap: 6, marginTop: 4 }}>
+          <Label>Pick a sound</Label>
+          {ALARM_SOUNDS.map((snd) => {
+            const on = soundId === snd.id;
+            return (
+              <View key={snd.id} style={[s.soundRow, on && { borderColor: A.core, backgroundColor: A.core + '14' }]}>
+                <Pressable onPress={() => setSoundId(snd.id)} accessibilityRole="radio" accessibilityState={{ selected: on }} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <Ionicons name={on ? 'radio-button-on' : 'radio-button-off'} size={18} color={on ? A.core : C.faint} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.title} numberOfLines={1}>{snd.label}</Text>
+                    <Text style={s.metaSmall} numberOfLines={1}>{snd.hint}</Text>
+                  </View>
+                </Pressable>
+                {snd.file != null && (
+                  <Pressable
+                    onPress={() => { if (playing === snd.id) { stopSound(); setPlaying(null); } else { setSoundId(snd.id); playSound(snd.id); setPlaying(snd.id); setTimeout(() => setPlaying((p) => (p === snd.id ? null : p)), 4000); } }}
+                    accessibilityRole="button" accessibilityLabel={`${playing === snd.id ? 'Stop' : 'Play'} ${snd.label}`} hitSlop={6}
+                    style={(st) => [{ padding: 8, borderRadius: 999 }, smooth, hovered(st) && { backgroundColor: C.card2 }]}
+                  >
+                    <Ionicons name={playing === snd.id ? 'stop-circle-outline' : 'play-circle-outline'} size={26} color={playing === snd.id ? A.over : C.text} />
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+          <Text style={s.metaSmall}>The sound plays in full when the alarm goes off. Picking a sound that is not the phone default needs the latest Forge app on Android; the web plays it while the page is open.</Text>
+        </View>
+      )}
 
       <Label>Vibration</Label>
       <Row style={{ gap: 6 }}>
@@ -188,7 +222,7 @@ export default function Alarms() {
       <Eyebrow>Tracker</Eyebrow>
       <H1>Alarms</H1>
       <P muted style={{ fontSize: 13, lineHeight: 19 }}>
-        Once, every day, or certain days of the week, with sound and vibration you can each turn on or off. On
+        Once, every day, or certain days of the week, with a sound you can pick and vibration, each of which you can turn on or off. Daily and weekly alarms are scheduled a week ahead on the phone itself, so they keep ringing even if you do not open the app, and top themselves up whenever you do. Nothing is sent from a server: these are alarms on your phone, not push notifications. On
         Android this rings through the phone's alarm volume, even on silent, but it still shows as a
         notification rather than taking over the screen like the built in clock app, so it can be swiped away
         to stop it.
@@ -230,6 +264,7 @@ export default function Alarms() {
 const s = StyleSheet.create({
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12 },
   metaSmall: { color: C.faint, fontFamily: F.body, fontSize: 11 },
+  soundRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: R.md, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, marginBottom: 10, backgroundColor: C.card, borderRadius: R.lg, borderWidth: 1, borderColor: C.border, borderTopWidth: 2 },
   editBox: { flexDirection: 'column', alignItems: 'stretch', gap: 2, paddingBottom: 14 },
   time: { color: C.text, fontFamily: F.display, fontSize: 20, letterSpacing: -0.4 },

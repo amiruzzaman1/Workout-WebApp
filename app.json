@@ -54,7 +54,19 @@
         "expo-notifications",
         {
           "icon": "./assets/android-icon-foreground.png",
-          "color": "#000000"
+          "color": "#000000",
+          "sounds": [
+          "./assets/sounds/alarm_classic.wav",
+          "./assets/sounds/alarm_chime.wav",
+          "./assets/sounds/alarm_rising.wav",
+          "./assets/sounds/alarm_bells.wav",
+          "./assets/sounds/alarm_radar.wav",
+          "./assets/sounds/alarm_fast.wav",
+          "./assets/sounds/alarm_piano.wav",
+          "./assets/sounds/alarm_siren.wav",
+          "./assets/sounds/alarm_marimba.wav",
+          "./assets/sounds/alarm_powerup.wav"
+          ]
         }
       ],
       "expo-speech-recognition",
@@ -66,7 +78,8 @@
           "cameraPermission": "Forge uses your camera to scan a food's barcode.",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "scheme": "workout",
     "extra": {

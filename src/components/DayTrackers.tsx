@@ -91,30 +91,45 @@ export function useRunningTimer() {
   return { running, seconds, sinceStart: since };
 }
 
-/** The built in categories, the ones you added, and any used before. */
+/**
+ * The built in categories, the ones you added, and any used before, minus the ones you removed. profiles.time_categories
+ * holds your own names, and a name written with a leading dash ("-Study") means "hidden", so any category can be removed
+ * (built in or used before as well) without a database change. Entries already logged keep their category name.
+ */
 export function useTimeCategories() {
   const { profile, activities, saveProfile } = useStore();
-  const custom = profile?.time_categories ?? [];
+  const stored: string[] = profile?.time_categories ?? [];
+  const custom = stored.filter((c) => !c.startsWith('-'));
+  const hidden = new Set(stored.filter((c) => c.startsWith('-')).map((c) => c.slice(1).toLowerCase()));
   const categories = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const c of [...ACTIVITY_CATEGORIES, ...custom, ...activities.map((a) => a.category ?? '')]) {
-      if (!c || seen.has(c.toLowerCase())) continue;
+      if (!c || seen.has(c.toLowerCase()) || hidden.has(c.toLowerCase())) continue;
       seen.add(c.toLowerCase());
       out.push(c);
     }
     return out;
-  }, [custom.join('|'), activities]);
+  }, [stored.join('|'), activities]);
 
-  /** Returns a message if the name can't be used, otherwise saves it. */
+  /** Returns a message if the name can't be used, otherwise saves it (bringing back a removed one if that is what it is). */
   async function addCategory(raw: string): Promise<string | null> {
     const name = raw.trim().replace(/\s+/g, ' ').slice(0, 24);
     if (!name) return 'Type a name for the category.';
     if (categories.some((c) => c.toLowerCase() === name.toLowerCase())) return 'That category already exists.';
-    await saveProfile({ time_categories: [...custom, name] } as any);
+    const rest = stored.filter((c) => c.toLowerCase() !== '-' + name.toLowerCase());
+    await saveProfile({ time_categories: rest.some((c) => c.toLowerCase() === name.toLowerCase()) ? rest : [...rest, name] } as any);
     return null;
   }
-  return { categories, addCategory };
+
+  /** Removes a category from the pickers. Returns a message if it can't be removed. */
+  async function removeCategory(name: string): Promise<string | null> {
+    if (categories.length <= 1) return 'Keep at least one category.';
+    const rest = stored.filter((c) => c.toLowerCase() !== name.toLowerCase() && c.toLowerCase() !== '-' + name.toLowerCase());
+    await saveProfile({ time_categories: [...rest, '-' + name] } as any);
+    return null;
+  }
+  return { categories, addCategory, removeCategory };
 }
 
 /** One small pill that says whether a night's sleep is saved, and taps through to it. */
@@ -285,7 +300,8 @@ const key = (s: string) => s.trim().toLowerCase();
 export function TimeTrackerCard({ date }: { date: string }) {
   const { activities, addActivity, updateActivity, deleteActivity, visits, tasks } = useStore();
   const { running, seconds } = useRunningTimer();
-  const { categories, addCategory } = useTimeCategories();
+  const { categories, addCategory, removeCategory } = useTimeCategories();
+  const [managing, setManaging] = useState(false);
   const isToday = date === todayISO();
 
   const [cat, setCat] = useState('Study');
@@ -407,6 +423,13 @@ export function TimeTrackerCard({ date }: { date: string }) {
     if (await confirm('Delete this entry?', `${a.title} (${fmtMinutes(a.minutes)}) will be removed.`, { confirmText: 'Delete', danger: true })) await deleteActivity(a.id);
   }
 
+  async function dropCategory(name: string) {
+    if (!(await confirm(`Remove ${name}?`, 'It disappears from the category choices. Time you already logged under it stays as it is, and you can add it back with New.', { confirmText: 'Remove', danger: true }))) return;
+    const problem = await removeCategory(name);
+    if (problem) return setError(problem);
+    if (cat === name) setCat(categories.find((c) => c !== name) ?? 'Other');
+  }
+
   async function saveCategory() {
     setError(null);
     try {
@@ -440,7 +463,10 @@ export function TimeTrackerCard({ date }: { date: string }) {
       <View style={st.form}>
         <Label>Category</Label>
         <Row wrap style={{ gap: 8 }}>
-          {categories.map((c) => <AccentTile key={c} label={c} color={catColor(c)} active={cat === c} onPress={() => setCat(c)} />)}
+          {categories.map((c) => managing
+            ? <AccentTile key={c} label={c} color={A.over} icon={<Ionicons name="trash-outline" size={16} color={A.over} />} onPress={() => dropCategory(c)} />
+            : <AccentTile key={c} label={c} color={catColor(c)} active={cat === c} onPress={() => setCat(c)} />)}
+          <AccentTile label={managing ? 'Done' : 'Remove'} color={C.borderStrong} dashed icon={<Ionicons name={managing ? 'checkmark' : 'trash-outline'} size={16} color={C.text} />} onPress={() => setManaging((m) => !m)} />
           <AccentTile label="New" color={C.borderStrong} dashed icon={<Ionicons name="add" size={16} color={C.text} />} onPress={() => setAdding(true)} />
         </Row>
         {adding && (

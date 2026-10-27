@@ -34,7 +34,7 @@ export function VoiceCommand() {
     reminders, addReminder, deleteReminder, water, setWater, logWeight, saveProfile,
     customExercises, logs, addLog, sleep, saveSleep,
   } = useStore();
-  const { categories } = useTimeCategories();
+  const { categories, addCategory, removeCategory } = useTimeCategories();
   const ai = useAiRuntime();
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('listening');
@@ -187,6 +187,12 @@ export function VoiceCommand() {
       }
     } else if (it.kind === 'add_task') {
       await addTask({ day: todayISO(), title: it.title, category: it.category, target_minutes: null });
+    } else if (it.kind === 'add_category') {
+      const problem = await addCategory(it.name);
+      if (problem) throw new Error(problem);
+    } else if (it.kind === 'remove_category') {
+      const problem = await removeCategory(it.name);
+      if (problem) throw new Error(problem);
     } else if (it.kind === 'delete_task') {
       await deleteTask(it.task.id);
     } else if (it.kind === 'log_food') {
@@ -297,6 +303,7 @@ function deleteLabels(intent: VoiceIntent): string[] {
   if (intent.kind === 'multi') return intent.intents.flatMap(deleteLabels);
   if (intent.kind === 'delete_task') return [intent.task.title];
   if (intent.kind === 'delete_reminder') return [intent.reminder.title];
+  if (intent.kind === 'remove_category') return [intent.name];
   if (intent.kind === 'delete_food') return [intent.entry.name];
   return [];
 }
@@ -309,6 +316,8 @@ function speakable(intent: VoiceIntent): string {
     case 'start_timer': return intent.isGym ? 'Starting a gym session.' : `Starting ${intent.label}.`;
     case 'stop_timer': return 'Stopping the timer.';
     case 'add_task': return `Adding task: ${intent.title}.`;
+    case 'add_category': return `Adding the category ${intent.name}.`;
+    case 'remove_category': return `Remove the category ${intent.name}.`;
     case 'delete_task': return `Delete task: ${intent.task.title}.`;
     case 'delete_food': return `Delete ${intent.entry.name}.`;
     case 'log_weight': return `Logging weight: ${intent.kg} kilograms.`;
@@ -391,6 +400,20 @@ function IntentBody({ intent, fromAi }: { intent: VoiceIntent; fromAi: boolean }
           <Ionicons name="checkbox-outline" size={28} color={A.core} />
           <Text style={s.title}>Add task: {intent.title}</Text>
           {!!intent.category && <Text style={s.hint}>{intent.category}</Text>}
+        </>
+      )}
+      {intent.kind === 'add_category' && (
+        <>
+          <Ionicons name="pricetag-outline" size={28} color={A.core} />
+          <Text style={s.title}>Add category: {intent.name}</Text>
+          <Text style={s.hint}>For the time tracker and tasks</Text>
+        </>
+      )}
+      {intent.kind === 'remove_category' && (
+        <>
+          <Ionicons name="trash-outline" size={28} color={A.over} />
+          <Text style={s.title}>Remove category: {intent.name}</Text>
+          <Text style={s.hint}>Time already logged under it stays</Text>
         </>
       )}
       {intent.kind === 'delete_task' && (

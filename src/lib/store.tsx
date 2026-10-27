@@ -253,7 +253,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setTasks((tk.data ?? []) as TaskItem[]);
     const { data: rmData } = await supabase.from('reminders').select('*').order('created_at', { ascending: true });
     setReminders((rmData ?? []) as Reminder[]);
-    const { data: alData } = await supabase.from('alarms').select('id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled').order('created_at', { ascending: true });
+    const { data: alData } = await supabase.from('alarms').select('*').order('created_at', { ascending: true });
     setAlarms((alData ?? []) as Alarm[]);
     const { data: ppData } = await supabase.from('progress_photos').select('id,day,note,created_at').order('day', { ascending: false });
     setProgressPhotos((ppData ?? []) as ProgressPhoto[]);
@@ -664,9 +664,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return data as CoachMessage;
   }, []);
 
-  const ALARM_COLS = 'id,label,alarm_time,repeat,days,alarm_date,sound,vibrate,vibration_pattern,repeat_count,enabled';
+  const ALARM_COLS = '*';
   const addAlarm = useCallback(async (row: Omit<Alarm, 'id'>) => {
-    const { data, error } = await supabase.from('alarms').insert(row).select(ALARM_COLS).single();
+    // A phone default sound needs no sound_id, so this still saves before the v22 column exists.
+    const insertRow: Record<string, unknown> = { ...row };
+    if (!row.sound_id || row.sound_id === 'default') delete insertRow.sound_id;
+    const { data, error } = await supabase.from('alarms').insert(insertRow).select(ALARM_COLS).single();
     if (error) throw new Error(error.message);
     setAlarms((l) => [...l, data as Alarm]);
     return data as Alarm;
