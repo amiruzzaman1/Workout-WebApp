@@ -493,3 +493,10 @@ alter table public.reminders add column if not exists repeat_count smallint not 
 
 -- v22: which alarm sound each alarm uses (one of the ten in src/lib/alarmSounds.ts, or 'default' for the phone's own).
 alter table public.alarms add column if not exists sound_id text not null default 'default';
+
+-- v23: alarms get a snooze time, a group (Wake Up, Gym, ...) and one skipped date; profiles get the last day of an
+-- On break period, during which the app keeps every alarm, reminder and notification quiet.
+alter table public.alarms add column if not exists snooze_minutes smallint check (snooze_minutes between 1 and 120);
+alter table public.alarms add column if not exists group_name text;
+alter table public.alarms add column if not exists skip_date date;
+alter table public.profiles add column if not exists break_until date;

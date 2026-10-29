@@ -16,6 +16,12 @@ const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
 const Notifications = isNative ? require('expo-notifications') : null;
 
 let channelReady = false;
+
+// While you are on a break (see onBreak.ts) nothing is shown or scheduled before this moment.
+let breakEnd: Date | null = null;
+export function setBreakEnd(d: Date | null) { breakEnd = d; }
+export function getBreakEnd(): Date | null { return breakEnd && breakEnd.getTime() > Date.now() ? breakEnd : null; }
+const inBreak = (when: Date) => !!getBreakEnd() && when.getTime() < (breakEnd as Date).getTime();
 let handlerSet = false;
 
 /** Call once, early (the root layout does this). Sets up the Android channel notifications need to look right. */
@@ -81,11 +87,11 @@ export async function initNotifications() {
 // below, and where ai.tsx and the root layout call it) is the honest, working version of a one tap button.
 export const CATEGORY = {
   logNudge: 'log-nudge', workoutNudge: 'workout-nudge', weighInNudge: 'weighin-nudge',
-  photoNudge: 'photo-nudge', coachNudge: 'coach-nudge',
+  photoNudge: 'photo-nudge', coachNudge: 'coach-nudge', alarmSnooze: 'alarm-snooze', alarmPlain: 'alarm-plain',
 } as const;
 export const ACTION = {
   addWater: 'add_water', openFood: 'open_food', openWorkout: 'open_workout',
-  openWeight: 'open_weight', openPhotos: 'open_photos', openChat: 'open_chat',
+  openWeight: 'open_weight', openPhotos: 'open_photos', openChat: 'open_chat', snooze: 'snooze', stopAlarm: 'stop_alarm',
 } as const;
 
 async function setupActionCategories() {
@@ -105,6 +111,13 @@ async function setupActionCategories() {
   await Notifications.setNotificationCategoryAsync(CATEGORY.coachNudge, [
     { identifier: ACTION.openChat, buttonTitle: 'Ask my coach' },
   ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.alarmSnooze, [
+    { identifier: ACTION.snooze, buttonTitle: 'Snooze' },
+    { identifier: ACTION.stopAlarm, buttonTitle: 'Stop' },
+  ]);
+  await Notifications.setNotificationCategoryAsync(CATEGORY.alarmPlain, [
+    { identifier: ACTION.stopAlarm, buttonTitle: 'Stop' },
+  ]);
 }
 
 /** Fires with the action identifier (one of ACTION's values) whenever a button is tapped while the app is
@@ -113,12 +126,13 @@ async function setupActionCategories() {
  *  near the top of the app, after initNotifications(). A plain tap on the notification body itself (not a
  *  button) reports Notifications.DEFAULT_ACTION_IDENTIFIER, which this passes through too, your handler can
  *  ignore it if it only cares about the buttons. */
-export function onNotificationAction(handler: (actionId: string) => void): () => void {
+export function onNotificationAction(handler: (actionId: string, data?: Record<string, any>) => void): () => void {
   if (!isNative) return () => {};
+  const dataOf = (r: any) => r?.notification?.request?.content?.data as Record<string, any> | undefined;
   Notifications.getLastNotificationResponseAsync().then((r: any) => {
-    if (r) handler(r.actionIdentifier);
+    if (r) handler(r.actionIdentifier, dataOf(r));
   }).catch(() => {});
-  const sub = Notifications.addNotificationResponseReceivedListener((r: any) => handler(r.actionIdentifier));
+  const sub = Notifications.addNotificationResponseReceivedListener((r: any) => handler(r.actionIdentifier, dataOf(r)));
   return () => sub.remove();
 }
 
@@ -181,6 +195,7 @@ function showWebNotification(title: string, body: string, tag?: string) {
 
 /** Shows right away, no scheduling. */
 export function notifyNow(title: string, body: string) {
+  if (getBreakEnd()) return; // on a break
   if (isNative) {
     if (!channelReady) return;
     Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null }).catch(() => {});
@@ -204,15 +219,16 @@ export function cancelScheduled(id: string) {
  *  told otherwise); categoryId, separately, is what actually attaches action buttons (one of CATEGORY's
  *  values) — the two are unrelated Android concepts and passing one where the other belongs silently drops
  *  both the buttons and the real channel, which is exactly the bug this comment is here to stop coming back. */
-export function scheduleAt(id: string, when: Date, title: string, body: string, channelId = 'reminders', categoryId?: string) {
+export function scheduleAt(id: string, when: Date, title: string, body: string, channelId = 'reminders', categoryId?: string, data?: Record<string, unknown>, force = false) {
   cancelScheduled(id);
+  if (!force && inBreak(when)) return; // on a break
   const ms = when.getTime() - Date.now();
   if (ms <= 0) return;
   if (isNative) {
     if (!channelReady) return;
     Notifications.scheduleNotificationAsync({
       identifier: id,
-      content: { title, body, channelId, ...(categoryId ? { categoryIdentifier: categoryId } : null) },
+      content: { title, body, channelId, ...(categoryId ? { categoryIdentifier: categoryId } : null), ...(data ? { data } : null) },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
     }).catch(() => {});
   } else {
@@ -238,9 +254,11 @@ export const MAX_ALARM_REPEATS = 6;
  *  played by the page when each one goes off (a browser notification cannot carry a custom sound). */
 export function scheduleAlarmAt(
   id: string, whens: Date | Date[], title: string, body: string, channelId: string, repeatCount: number,
-  extra?: { vibration: AlarmVibration; soundId?: string | null },
+  extra?: { vibration: AlarmVibration; soundId?: string | null; snooze?: number | null; alarmId?: string },
+  force = false,
 ) {
-  const list = (Array.isArray(whens) ? whens : [whens]).filter((d) => d.getTime() > Date.now());
+  const list = (Array.isArray(whens) ? whens : [whens]).filter((d) => d.getTime() > Date.now() && (force || !inBreak(d)));
+  const category = extra?.alarmId ? (extra.snooze ? CATEGORY.alarmSnooze : CATEGORY.alarmPlain) : undefined;
   (async () => {
     await cancelAlarmAtAsync(id);
     if (isNative && extra?.soundId && extra.soundId !== 'default') await ensureAlarmChannel(extra.vibration, extra.soundId).catch(() => {});
@@ -248,7 +266,7 @@ export function scheduleAlarmAt(
       for (let i = 0; i < repeatCount; i++) {
         const at = new Date(when.getTime() + i * 3000);
         const key = `${id}-${n}-${i}`;
-        if (isNative) scheduleAt(key, at, title, body, channelId);
+        if (isNative) scheduleAt(key, at, title, body, channelId, category, extra?.alarmId ? { alarmId: extra.alarmId, n, snooze: extra.snooze ?? null } : undefined, force);
         else {
           const ms = Math.min(at.getTime() - Date.now(), 2000000000);
           webTimers.set(key, setTimeout(() => { webTimers.delete(key); showWebNotification(title, body); if (i === 0) playSound(extra?.soundId); }, ms));
@@ -259,7 +277,11 @@ export function scheduleAlarmAt(
 }
 
 async function cancelAlarmAtAsync(id: string) {
-  const prefix = id + '-';
+  await cancelByPrefix(id + '-');
+}
+
+/** Cancels every scheduled notification whose id starts with this text (the several copies of one alarm, say). */
+export async function cancelByPrefix(prefix: string) {
   if (isNative) {
     try {
       const all = await Notifications.getAllScheduledNotificationsAsync();

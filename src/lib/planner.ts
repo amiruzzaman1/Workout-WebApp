@@ -36,6 +36,7 @@ export type Profile = {
   calorie_override?: number | null;
   water_goal_ml?: number | null;
   time_categories?: string[] | null; // your own time tracker categories
+  break_until?: string | null; // last day of an On break period (YYYY-MM-DD), see onBreak.ts
 };
 
 export type SplitChoice = 'auto' | 'full_body' | 'upper_lower' | 'ppl' | 'body_part';

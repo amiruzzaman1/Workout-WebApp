@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
+import { BreakBanner } from '../../../src/components/BreakCard';
 import { SessionPreview } from '../../../src/components/SessionPreview';
 import { Button, Eyebrow, H1, hovered, IconBadge, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
@@ -15,6 +16,7 @@ import { groupColor, sessionGroups } from '../../../src/lib/groups';
 import { refreshAlarms } from '../../../src/lib/alarms';
 import { checkGoalMilestone, checkStreakMilestone } from '../../../src/lib/milestones';
 import { initNotifications, requestNotifyPermission } from '../../../src/lib/notify';
+import { applyBreak } from '../../../src/lib/onBreak';
 import { refreshReminders } from '../../../src/lib/reminders';
 import { JETTS_NEWTOWN_TEMPLATE } from '../../../src/data/machines';
 import { isOwner } from '../../../src/lib/owner';
@@ -73,6 +75,7 @@ export default function DashboardScreen() {
   const daysSinceAnyLog = daysSinceLastLog(loggedDays, todayStr);
   useEffect(() => {
     initNotifications();
+    applyBreak(profile?.break_until);
     requestNotifyPermission().then((ok) => {
       if (!ok) return;
       const mealsToday = new Set(foodEntries.filter((e) => e.eaten_on === todayStr).map((e) => e.meal));
@@ -95,7 +98,7 @@ export default function DashboardScreen() {
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
+  }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, profile?.break_until, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
 
   // Once per gym version (planner.ts GYM_VERSION): set the equipment list to what is really at the gym and build a
   // fresh plan from it. The version is stored in the plan itself, so web and phone agree and it never loops.
@@ -155,6 +158,7 @@ export default function DashboardScreen() {
 
   return (
     <Screen>
+      <BreakBanner onPress={() => router.push('/tracker/alarms')} />
       <StreakBanner days={dayStreak} loggedToday={loggedSomethingToday} onPress={() => router.push('/food/add')} />
 
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>

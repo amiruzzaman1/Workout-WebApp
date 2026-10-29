@@ -9,7 +9,8 @@
 // sleep, workout, tasks, streak) and picks the kind of message that fits, then one of 10 variations of it in
 // the chosen coach's voice (angry Goku, flirty Mirko; lines in pulseMessages.ts).
 import { CoachStyle, getCoachStyle } from './coachStyle';
-import { CATEGORY, cancelScheduled, scheduleAt } from './notify';
+import { CATEGORY, cancelScheduled, getBreakEnd, scheduleAt } from './notify';
+import { afterBreak } from './onBreak';
 import { fill, PULSE_TEXT, PulseKind, Vars, voiceOf } from './pulseMessages';
 
 const HOURS = [8, 10, 12, 14, 16, 18, 20, 22];
@@ -117,12 +118,19 @@ export function pulseText(kind: PulseKind, style: CoachStyle, seed: string, vars
 export function schedulePulses(today: DayState, tomorrow: DayState, name: string) {
   const style = getCoachStyle();
   const now = new Date();
-  [[today, 0], [tomorrow, 1]].forEach(([state, ahead]) => {
-    const s = state as DayState;
-    const day = at(0, 0, ahead as number);
+  // Days to schedule: today and tomorrow as usual, plus the first two days after a break, so the nudges come back by
+  // themselves when it ends (the days inside the break are cancelled by scheduleAt's break check).
+  const brk = getBreakEnd();
+  const resume = brk ? Math.max(0, Math.round((new Date(brk.getFullYear(), brk.getMonth(), brk.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 864e5)) : 0;
+  const fresh: DayState = { ...tomorrow, streak: { days: 0, loggedToday: false } };
+  const plan: [DayState, number][] = [[today, 0], [tomorrow, 1]];
+  for (const ahead of [resume, resume + 1]) if (ahead > 1) plan.push([fresh, ahead]);
+  plan.forEach(([state, ahead]) => {
+    const s = state;
+    const day = at(0, 0, ahead);
     for (const hour of HOURS) {
       const id = `pulse-${stamp(day)}-${hour}`;
-      const when = at(hour, 0, ahead as number);
+      const when = at(hour, 0, ahead);
       if (when <= now) { cancelScheduled(id); continue; }
       const kind = pickKind(hour, s);
       const left = Math.max(0, s.waterGlassesLeft);
@@ -137,7 +145,7 @@ export function schedulePulses(today: DayState, tomorrow: DayState, name: string
     }
     // One more late check at 11:30 pm, only when the streak would still end at midnight.
     const lateId = `pulse-${stamp(day)}-late`;
-    const late = at(23, 30, ahead as number);
+    const late = at(23, 30, ahead);
     if (late <= now || !(s.streak.days > 0 && !s.streak.loggedToday)) { cancelScheduled(lateId); return; }
     const msg = pulseText('streakRisk', style, `${stamp(day)}late`, { name, streak: String(s.streak.days) });
     scheduleAt(lateId, late, msg.title, msg.body, 'reminders', CATEGORY.logNudge);
@@ -158,7 +166,7 @@ function dailyDays(days: number | null): string {
 export function scheduleWeighInReminder(daysSinceLastWeighIn: number | null, name: string) {
   const id = 'weighin-reminder';
   if (!(daysSinceLastWeighIn == null || daysSinceLastWeighIn >= 7)) { cancelScheduled(id); return; }
-  const when = nextWeekday(1, 9, 0);
+  const when = afterBreak(nextWeekday(1, 9, 0), getBreakEnd());
   const msg = pulseText('weighIn', getCoachStyle(), stamp(when), { name, days: dailyDays(daysSinceLastWeighIn) });
   scheduleAt(id, when, msg.title, msg.body, 'reminders', CATEGORY.weighInNudge);
 }
@@ -167,7 +175,7 @@ export function scheduleWeighInReminder(daysSinceLastWeighIn: number | null, nam
 export function scheduleProgressPhotoReminder(daysSinceLastPhoto: number | null, name: string) {
   const id = 'photo-reminder';
   if (!(daysSinceLastPhoto == null || daysSinceLastPhoto >= 14)) { cancelScheduled(id); return; }
-  const when = nextWeekday(1, 9, 30);
+  const when = afterBreak(nextWeekday(1, 9, 30), getBreakEnd());
   const msg = pulseText('photo', getCoachStyle(), stamp(when), { name, days: dailyDays(daysSinceLastPhoto) });
   scheduleAt(id, when, msg.title, msg.body, 'reminders', CATEGORY.photoNudge);
 }
@@ -176,7 +184,7 @@ export function scheduleProgressPhotoReminder(daysSinceLastPhoto: number | null,
 export function scheduleInactivityWinBack(daysSinceAnyLog: number | null, name: string) {
   const id = 'winback';
   if (daysSinceAnyLog == null || daysSinceAnyLog < 2) { cancelScheduled(id); return; }
-  const when = at(10, 0, 1);
+  const when = afterBreak(at(10, 0, 1), getBreakEnd());
   const msg = pulseText('winback', getCoachStyle(), stamp(when), { name, days: dailyDays(daysSinceAnyLog) });
   scheduleAt(id, when, msg.title, msg.body, 'reminders', CATEGORY.coachNudge);
 }

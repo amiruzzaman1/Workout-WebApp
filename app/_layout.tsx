@@ -11,7 +11,8 @@ import { View } from 'react-native';
 import { ConfirmHost } from '../src/components/ConfirmHost';
 import { Loading } from '../src/components/ui';
 import { AiRuntimeProvider } from '../src/lib/aiRuntime';
-import { ACTION, onNotificationAction } from '../src/lib/notify';
+import { snoozeAlarm } from '../src/lib/alarms';
+import { ACTION, cancelByPrefix, onNotificationAction } from '../src/lib/notify';
 import { todayISO } from '../src/lib/progress';
 import { StoreProvider, useStore } from '../src/lib/store';
 import { C, F } from '../src/lib/theme';
@@ -31,9 +32,24 @@ function NotificationActions() {
 
   useEffect(() => {
     if (!store.ready) return;
-    return onNotificationAction((actionId) => {
+    return onNotificationAction((actionId, data) => {
       const s = storeRef.current;
+      const alarm = data?.alarmId ? s.alarms.find((x) => x.id === data.alarmId) : undefined;
       switch (actionId) {
+        case ACTION.snooze:
+          // The Snooze button: stop this ring's other copies and ring again after the alarm's own snooze time.
+          if (alarm) {
+            cancelByPrefix(`alarm-${alarm.id}-${data?.n ?? 0}-`);
+            snoozeAlarm(alarm, alarm.snooze_minutes ?? 10);
+          }
+          break;
+        case ACTION.stopAlarm:
+          if (alarm) {
+            cancelByPrefix(`alarm-${alarm.id}-${data?.n ?? 0}-`);
+            cancelByPrefix(`alarm-snooze-${alarm.id}-`);
+            cancelByPrefix(`alarm-test-${alarm.id}-`);
+          }
+          break;
         case ACTION.addWater: {
           const today = todayISO();
           s.setWater(today, (s.water[today] ?? 0) + 250).catch(() => {});

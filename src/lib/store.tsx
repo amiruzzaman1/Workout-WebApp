@@ -669,6 +669,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // A phone default sound needs no sound_id, so this still saves before the v22 column exists.
     const insertRow: Record<string, unknown> = { ...row };
     if (!row.sound_id || row.sound_id === 'default') delete insertRow.sound_id;
+    // Same for the optional snooze, group and skip columns (added in schema v23).
+    for (const k of ['snooze_minutes', 'group_name', 'skip_date']) if (insertRow[k] == null || insertRow[k] === '') delete insertRow[k];
     const { data, error } = await supabase.from('alarms').insert(insertRow).select(ALARM_COLS).single();
     if (error) throw new Error(error.message);
     setAlarms((l) => [...l, data as Alarm]);

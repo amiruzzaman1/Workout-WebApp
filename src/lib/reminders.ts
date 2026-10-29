@@ -1,7 +1,7 @@
 // Reminders that are not about a single day: take your medicine every day at the same time, cancel a
 // subscription on a date in the future, a birthday that comes back every year. Each is scheduled with
 // src/lib/notify.ts for whenever it is next due; see refreshReminders(), called whenever the list changes.
-import { AlarmVibration, alarmChannelId, cancelAlarmAt, cancelScheduled, scheduleAlarmAt, scheduleAt } from './notify';
+import { AlarmVibration, alarmChannelId, cancelAlarmAt, cancelScheduled, getBreakEnd, scheduleAlarmAt, scheduleAt } from './notify';
 
 /** How a reminder alerts you: silently (no sound or buzz), a normal notification, or like an alarm (rings through silent mode, buzzes, repeats). */
 export type ReminderStyle = 'silent' | 'normal' | 'alarm';
@@ -77,7 +77,9 @@ export function refreshReminders(reminders: Reminder[]) {
     // Clear both kinds first: switching a reminder between alarm and the others must not leave the old one behind.
     cancelScheduled(id);
     cancelAlarmAt(id);
-    const when = nextOccurrence(r);
+    // On a break, work out the next time after the break so it is already waiting when the break ends.
+    const brk = getBreakEnd();
+    const when = nextOccurrence(r, brk ?? new Date());
     if (!when) continue;
     const style = r.style ?? 'normal';
     if (style === 'alarm') {

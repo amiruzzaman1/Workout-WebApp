@@ -2,7 +2,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Alarm, AlarmRepeat, nextOccurrence, REPEAT_LABEL, VIBRATION_LABEL } from '../../../src/lib/alarms';
+import { Alarm, AlarmRepeat, isSkipping, nextRing, REPEAT_LABEL, SNOOZE_CHOICES, testAlarm, toggleSkipChanges, VIBRATION_LABEL } from '../../../src/lib/alarms';
+import { BreakCard } from '../../../src/components/BreakCard';
+import { dayText } from '../../../src/lib/onBreak';
 import { ALARM_SOUNDS, playSound, soundLabel, stopSound } from '../../../src/lib/alarmSounds';
 import { CalendarModal } from '../../../src/components/CalendarModal';
 import { TimeField } from '../../../src/components/TimeField';
@@ -48,22 +50,24 @@ function fmtWhen(a: Alarm) {
     const names = WEEK_ORDER.filter((d) => a.days.includes(d)).map((d) => DAY_SHORT[d]);
     return `${names.join(', ')}, ${time}`;
   }
-  const when = nextOccurrence(a);
-  if (!when) return `Already happened, ${time}`;
+  const when = nextRing(a);
+  if (!when) return a.repeat === 'once' ? `Already happened, ${time}` : `No ring in the next two weeks, ${time}`;
   const md = when.toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' });
   return `${md}, ${time}`;
 }
 
-function AlarmRow({ a, onToggle, onEdit, onDelete }: { a: Alarm; onToggle: () => void; onEdit: () => void; onDelete: () => void }) {
+function AlarmRow({ a, onToggle, onEdit, onDelete, onSkip, onCopy, onTest }: { a: Alarm; onToggle: () => void; onEdit: () => void; onDelete: () => void; onSkip: () => void; onCopy: () => void; onTest: () => void }) {
   const color = A.core;
+  const skipping = isSkipping(a);
   return (
-    <View style={[s.row, { borderTopColor: color, opacity: a.enabled ? 1 : 0.6 }]}>
+    <View style={[s.row, { borderTopColor: color, flexDirection: 'column', alignItems: 'stretch' }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: a.enabled ? 1 : 0.6 }}>
       <Pressable onPress={onEdit} style={(st) => [{ flex: 1, minWidth: 0, borderRadius: R.sm }, smooth, hovered(st) && { backgroundColor: C.card2 }]}>
         <Row style={{ gap: 10 }}>
           <Text style={s.time}>{fmt12(a.alarm_time)}</Text>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={s.title} numberOfLines={1}>{a.label || 'Alarm'}</Text>
-            <Text style={s.meta} numberOfLines={1}>{fmtWhen(a)}</Text>
+            <Text style={s.meta} numberOfLines={2}>{fmtWhen(a)}{skipping && a.skip_date ? ` · skipping ${dayText(a.skip_date)}` : ''}</Text>
           </View>
         </Row>
         <Row style={{ gap: 10, marginTop: 6 }}>
@@ -71,13 +75,19 @@ function AlarmRow({ a, onToggle, onEdit, onDelete }: { a: Alarm; onToggle: () =>
           {a.sound && <Text style={s.metaSmall}>{soundLabel(a.sound_id)}</Text>}
           <Ionicons name="phone-portrait-outline" size={14} color={a.vibrate ? C.muted : C.faint} />
           {a.vibrate && <Text style={s.metaSmall}>{VIBRATION_LABEL[a.vibration_pattern]}</Text>}
-          <Text style={s.metaSmall}>· rings {a.repeat_count}×</Text>
+          <Text style={s.metaSmall}>· rings {a.repeat_count}×{a.snooze_minutes ? ` · snooze ${a.snooze_minutes} min` : ''}</Text>
         </Row>
       </Pressable>
       <AlarmSwitch on={a.enabled} onToggle={onToggle} />
       <Pressable onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${a.label || 'alarm'}`} style={(st) => [{ padding: 5, borderRadius: 999, marginLeft: 4 }, smooth, hovered(st) && { backgroundColor: A.over + '22' }]}>
         {(st: any) => <Ionicons name="trash-outline" size={16} color={hovered(st) ? A.over : C.faint} />}
       </Pressable>
+      </View>
+      <Row wrap style={{ gap: 6, marginTop: 10 }}>
+        <Button small kind="secondary" icon={skipping ? 'arrow-undo' : 'play-skip-forward'} tint={A.cardio} title={skipping ? 'Undo skip' : 'Skip next'} onPress={onSkip} disabled={!a.enabled} />
+        <Button small kind="secondary" icon="volume-high-outline" title="Test" onPress={onTest} />
+        <Button small kind="secondary" icon="copy-outline" title="Copy" onPress={onCopy} />
+      </Row>
     </View>
   );
 }
@@ -87,7 +97,7 @@ const VIBRATIONS: [Exclude<AlarmVibration, 'none'>, string][] = [['short', 'Shor
 
 /** Add or edit an alarm: a label, a time, once/daily/certain days, and sound and vibration you can each turn
  *  on or off, with its own repeat count, since the two are controlled independently. */
-function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; onCancel: () => void; onSave: (row: Omit<Alarm, 'id'>) => Promise<void>; onDelete?: () => void }) {
+function AlarmForm({ initial, groups, defaultGroup, onCancel, onSave, onDelete }: { initial?: Alarm; groups: string[]; defaultGroup?: string; onCancel: () => void; onSave: (row: Omit<Alarm, 'id'>) => Promise<void>; onDelete?: () => void }) {
   const [label, setLabel] = useState(initial?.label ?? '');
   const [time, setTime] = useState(initial?.alarm_time ?? '07:00');
   const [repeat, setRepeat] = useState<AlarmRepeat>(initial?.repeat ?? 'once');
@@ -98,6 +108,11 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
   const [soundId, setSoundId] = useState<string>(initial?.sound_id ?? 'default');
   const [playing, setPlaying] = useState<string | null>(null);
   useEffect(() => () => stopSound(), []);
+  const [group, setGroup] = useState<string>(initial?.group_name ?? (defaultGroup && defaultGroup !== '__new__' ? defaultGroup : ''));
+  const [newGroup, setNewGroup] = useState('');
+  const [makingGroup, setMakingGroup] = useState(defaultGroup === '__new__');
+  const [snooze, setSnooze] = useState<number | null>(initial?.snooze_minutes ?? null);
+  const [customSnooze, setCustomSnooze] = useState(initial?.snooze_minutes && !SNOOZE_CHOICES.includes(initial.snooze_minutes) ? String(initial.snooze_minutes) : '');
   const [vibrate, setVibrate] = useState(initial?.vibrate ?? true);
   const [pattern, setPattern] = useState<Exclude<AlarmVibration, 'none'>>(initial?.vibration_pattern ?? 'short');
   const [repeatCount, setRepeatCount] = useState(initial?.repeat_count ?? 3);
@@ -111,11 +126,13 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
   async function save() {
     if (repeat === 'weekly' && days.length === 0) return setError('Pick at least one day.');
     if (!sound && !vibrate) return setError('Turn on sound, vibration, or both.');
+    if (makingGroup && !newGroup.trim()) return setError('Type a name for the new group, or pick None.');
     setBusy(true);
     try {
       await onSave({
         label: label.trim().slice(0, 80), alarm_time: time, repeat,
         days: repeat === 'weekly' ? days : [], alarm_date: repeat === 'once' ? date : null,
+        group_name: (makingGroup ? newGroup.trim().replace(/\s+/g, ' ').slice(0, 24) : group) || null, snooze_minutes: snooze, skip_date: initial?.skip_date ?? null,
         sound, sound_id: soundId, vibrate, vibration_pattern: pattern, repeat_count: repeatCount, enabled: initial?.enabled ?? true,
       });
     } catch (e: any) {
@@ -195,6 +212,32 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
         </Row>
       )}
 
+      <Label>Snooze button</Label>
+      <Row wrap style={{ gap: 6 }}>
+        <Chip label="None" active={snooze == null} onPress={() => { setSnooze(null); setCustomSnooze(''); }} />
+        {SNOOZE_CHOICES.map((m) => <Chip key={m} label={`${m} min`} active={snooze === m} onPress={() => { setSnooze(m); setCustomSnooze(''); }} />)}
+        <Chip label="Your own" active={snooze != null && !SNOOZE_CHOICES.includes(snooze)} onPress={() => { const n = Number(customSnooze) || 7; setSnooze(n); setCustomSnooze(String(n)); }} />
+      </Row>
+      {snooze != null && !SNOOZE_CHOICES.includes(snooze) && (
+        <Row style={{ gap: 8, alignItems: 'center' }}>
+          <View style={{ width: 90 }}>
+            <Input value={customSnooze} keyboardType="number-pad" accessibilityLabel="Snooze minutes"
+              onChangeText={(t) => { const d = t.replace(/\D/g, '').slice(0, 3); setCustomSnooze(d); setSnooze(d ? Math.max(1, Math.min(120, Number(d))) : 1); }} />
+          </View>
+          <Text style={s.meta}>minutes (1 to 120)</Text>
+        </Row>
+      )}
+      {snooze != null && <Text style={s.metaSmall}>The notification gets a Snooze button that rings it again after {snooze} min, and a Stop button.</Text>}
+
+      <Label>Group (optional)</Label>
+      <Row wrap style={{ gap: 6 }}>
+        <Chip label="None" active={!makingGroup && !group} onPress={() => { setGroup(''); setMakingGroup(false); }} />
+        {groups.map((g) => <Chip key={g} label={g} active={!makingGroup && group === g} onPress={() => { setGroup(g); setMakingGroup(false); }} />)}
+        <Chip label="New group" active={makingGroup} onPress={() => setMakingGroup(true)} />
+      </Row>
+      {makingGroup && <Input value={newGroup} onChangeText={setNewGroup} placeholder="e.g. Wake Up, Gym, Study" accessibilityLabel="New group name" />}
+      <Text style={s.metaSmall}>Alarms in a group can be skipped, turned off, tested or deleted together.</Text>
+
       <Label>Rings and buzzes this many times</Label>
       <Stepper value={repeatCount} onChange={(v) => setRepeatCount(Math.max(1, Math.min(MAX_ALARM_REPEATS, Math.round(v))))} />
 
@@ -212,9 +255,43 @@ function AlarmForm({ initial, onCancel, onSave, onDelete }: { initial?: Alarm; o
 export default function Alarms() {
   const { alarms, addAlarm, updateAlarm, deleteAlarm } = useStore();
   const [editing, setEditing] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<string | false>(false); // '' new on its own, a group name, or '__new__' for a new group
+  const [error, setError] = useState<string | null>(null);
 
-  const sorted = [...alarms].sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
+  const byTime = (list: Alarm[]) => [...list].sort((x, y) => x.alarm_time.localeCompare(y.alarm_time));
+  const groupNames = [...new Set(alarms.map((a) => a.group_name).filter((g): g is string => !!g))].sort();
+  const single = byTime(alarms.filter((a) => !a.group_name));
+  const guard = (p: Promise<unknown>) => p.catch((e) => setError(/skip_date|snooze_minutes|group_name|column/i.test(e?.message ?? '') ? 'Run the v23 SQL in Supabase first (it adds the snooze, group and skip columns), then try again.' : e?.message ?? 'Could not save.'));
+
+  const copy = (a: Alarm) => { const { id: _id, ...rest } = a; return guard(addAlarm({ ...rest, label: `${a.label || 'Alarm'} copy`, skip_date: null })); };
+  const skip = (a: Alarm) => guard(updateAlarm(a.id, toggleSkipChanges(a)));
+  async function removeAlarm(a: Alarm) {
+    if (await confirm('Delete this alarm?', `${a.label || 'This alarm'} will be removed.`, { confirmText: 'Delete', danger: true })) { await deleteAlarm(a.id); setEditing(null); }
+  }
+  const skipGroup = (list: Alarm[]) => {
+    const live = list.filter((a) => a.enabled);
+    const allSkipping = live.length > 0 && live.every((a) => isSkipping(a));
+    return guard(Promise.all(live.map((a) => (allSkipping ? updateAlarm(a.id, { skip_date: null }) : isSkipping(a) ? Promise.resolve() : updateAlarm(a.id, toggleSkipChanges(a))))));
+  };
+  const toggleGroup = (list: Alarm[]) => { const on = !list.some((a) => a.enabled); return guard(Promise.all(list.map((a) => updateAlarm(a.id, { enabled: on })))); };
+  const testGroup = (list: Alarm[]) => byTime(list).forEach((a, i) => testAlarm(a, 3 + i * 4));
+  async function removeGroup(name: string, list: Alarm[]) {
+    if (await confirm(`Delete the ${name} group?`, `All ${list.length} alarms in it will be deleted.`, { confirmText: 'Delete all', danger: true })) await guard(Promise.all(list.map((a) => deleteAlarm(a.id))));
+  }
+
+  const renderAlarm = (a: Alarm) => (editing === a.id ? (
+    <AlarmForm
+      key={a.id} initial={a} groups={groupNames} onCancel={() => setEditing(null)}
+      onDelete={() => removeAlarm(a)}
+      onSave={async (row) => { await updateAlarm(a.id, row); setEditing(null); }}
+    />
+  ) : (
+    <AlarmRow
+      key={a.id} a={a} onEdit={() => setEditing(a.id)}
+      onToggle={() => guard(updateAlarm(a.id, { enabled: !a.enabled }))}
+      onDelete={() => removeAlarm(a)} onSkip={() => skip(a)} onCopy={() => copy(a)} onTest={() => testAlarm(a)}
+    />
+  ));
 
   return (
     <Screen>
@@ -222,39 +299,44 @@ export default function Alarms() {
       <Eyebrow>Tracker</Eyebrow>
       <H1>Alarms</H1>
       <P muted style={{ fontSize: 13, lineHeight: 19 }}>
-        Once, every day, or certain days of the week, with a sound you can pick and vibration, each of which you can turn on or off. Daily and weekly alarms are scheduled a week ahead on the phone itself, so they keep ringing even if you do not open the app, and top themselves up whenever you do. Nothing is sent from a server: these are alarms on your phone, not push notifications. On
-        Android this rings through the phone's alarm volume, even on silent, but it still shows as a
-        notification rather than taking over the screen like the built in clock app, so it can be swiped away
-        to stop it.
+        Alarms are scheduled on your phone itself, a week ahead, so they ring even if you do not open Forge. They are not push notifications and nothing comes from a server. On Android they ring on the alarm volume, even on silent, but show as a notification you can swipe away. The Snooze and Stop buttons open Forge for a moment.
       </P>
 
-      <Section title="Your alarms" icon="alarm" color={A.core} right={<Text style={s.meta}>{alarms.length || ''}</Text>}>
+      <BreakCard />
+      {!!error && <Text style={{ color: C.danger, fontFamily: F.body, fontSize: 13 }}>{error}</Text>}
+
+      {groupNames.map((g) => {
+        const list = byTime(alarms.filter((a) => a.group_name === g));
+        const anyOn = list.some((a) => a.enabled);
+        const live = list.filter((a) => a.enabled);
+        const allSkipping = live.length > 0 && live.every((a) => isSkipping(a));
+        return (
+          <Section key={g} title={g} icon="albums-outline" color={A.core} right={<Text style={s.meta}>{list.length} alarm{list.length === 1 ? '' : 's'}</Text>}>
+            <Row wrap style={{ gap: 6, marginBottom: 10 }}>
+              <Button small kind="secondary" icon={allSkipping ? 'arrow-undo' : 'play-skip-forward'} tint={A.cardio} title={allSkipping ? 'Undo skip for all' : 'Skip next for all'} onPress={() => skipGroup(list)} disabled={!anyOn} />
+              <Button small kind="secondary" icon={anyOn ? 'notifications-off-outline' : 'notifications-outline'} title={anyOn ? 'Turn all off' : 'Turn all on'} onPress={() => toggleGroup(list)} />
+              <Button small kind="secondary" icon="volume-high-outline" title="Test all" onPress={() => testGroup(list)} />
+              <Button small kind="secondary" icon="add-circle-outline" title="Add to group" onPress={() => setAdding(g)} />
+              <Button small kind="secondary" icon="trash-outline" tint={A.over} title="Delete group" onPress={() => removeGroup(g, list)} />
+            </Row>
+            <View>{list.map(renderAlarm)}</View>
+            {adding === g && <AlarmForm groups={groupNames} defaultGroup={g} onCancel={() => setAdding(false)} onSave={async (row) => { await addAlarm(row); setAdding(false); }} />}
+          </Section>
+        );
+      })}
+
+      <Section title={groupNames.length ? 'Single alarms' : 'Your alarms'} icon="alarm" color={A.core} right={<Text style={s.meta}>{single.length || ''}</Text>}>
         <View>
-          {sorted.map((a) => (
-            editing === a.id ? (
-              <AlarmForm
-                key={a.id} initial={a} onCancel={() => setEditing(null)}
-                onDelete={async () => {
-                  if (await confirm('Delete this alarm?', `${a.label || 'This alarm'} will be removed.`, { confirmText: 'Delete', danger: true })) { await deleteAlarm(a.id); setEditing(null); }
-                }}
-                onSave={async (row) => { await updateAlarm(a.id, row); setEditing(null); }}
-              />
-            ) : (
-              <AlarmRow
-                key={a.id} a={a} onEdit={() => setEditing(a.id)}
-                onToggle={() => updateAlarm(a.id, { enabled: !a.enabled })}
-                onDelete={async () => {
-                  if (await confirm('Delete this alarm?', `${a.label || 'This alarm'} will be removed.`, { confirmText: 'Delete', danger: true })) await deleteAlarm(a.id);
-                }}
-              />
-            )
-          ))}
-          {alarms.length === 0 && !adding && <P muted style={{ fontSize: 13 }}>No alarms yet.</P>}
+          {single.map(renderAlarm)}
+          {alarms.length === 0 && adding === false && <P muted style={{ fontSize: 13 }}>No alarms yet.</P>}
         </View>
-        {adding ? (
-          <AlarmForm onCancel={() => setAdding(false)} onSave={async (row) => { await addAlarm(row); setAdding(false); }} />
+        {adding === '' || adding === '__new__' ? (
+          <AlarmForm groups={groupNames} defaultGroup={adding} onCancel={() => setAdding(false)} onSave={async (row) => { await addAlarm(row); setAdding(false); }} />
         ) : (
-          <Button kind="secondary" icon="add-circle-outline" tint={A.core} title="New alarm" onPress={() => setAdding(true)} style={{ alignSelf: 'flex-start' }} />
+          <Row wrap style={{ gap: 8 }}>
+            <Button kind="secondary" icon="add-circle-outline" tint={A.core} title="New alarm" onPress={() => setAdding('')} />
+            <Button kind="secondary" icon="albums-outline" tint={A.core} title="New group, like Wake Up" onPress={() => setAdding('__new__')} />
+          </Row>
         )}
       </Section>
     </Screen>
