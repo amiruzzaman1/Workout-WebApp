@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
 import { BreakBanner } from '../../../src/components/BreakCard';
-import { QuestsCard } from '../../../src/components/QuestsCard';
+import { QuestsCard, useQuestsLeft } from '../../../src/components/QuestsCard';
+import { WeekPath } from '../../../src/components/WeekPath';
 import { SessionPreview } from '../../../src/components/SessionPreview';
 import { Button, Eyebrow, H1, hovered, IconBadge, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
@@ -54,6 +55,7 @@ export default function DashboardScreen() {
   // (goalPct) the notification milestone check below, built once here so all three stay in sync. Tolerates
   // plan being null (no plan built yet), unlike plan.data.days used further down, which needs the early
   // return below first.
+  const questsLeft = useQuestsLeft((plan ? plan.data.days.find((d) => d.day === new Date(`${todayStr}T12:00:00`).getDay())?.sessions.length ?? 0 : 0) > 0);
   const coachContext = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
 
   // Celebrates crossing a real milestone the moment it is seen, not on a schedule: see src/lib/milestones.ts.
@@ -90,7 +92,7 @@ export default function DashboardScreen() {
           waterPct, waterGlassesLeft: glassesLeft, proteinPct: coachContext.proteinPct,
           sleepLogged: sleep.some((x) => x.night_of === todayStr && (x.minutes != null || x.bed_time || x.wake_time)),
           workout: { planned: todaysPlannedSessions.length > 0, done: loggedDates.has(todayStr), title: todaysPlannedSessions[0]?.title ?? null },
-          tasksLeft: todayUndone, streak: { days: dayStreak, loggedToday: loggedSomethingToday },
+          tasksLeft: todayUndone, questsLeft, streak: { days: dayStreak, loggedToday: loggedSomethingToday },
         },
         tomorrowWorkout: { planned: tomorrowSessions.length > 0, title: tomorrowSessions[0]?.title ?? null },
         name: (profile?.display_name ?? '').trim().split(/\s+/)[0] || 'champ',
@@ -99,7 +101,7 @@ export default function DashboardScreen() {
       refreshReminders(reminders);
       refreshAlarms(alarms);
     });
-  }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, profile?.break_until, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
+  }, [foodEntries, todayUndone, reminders, alarms, dayStreak, loggedSomethingToday, daysSinceLastWeighIn, coachContext.waterPct, coachContext.proteinPct, sleep, coachStyle, profile?.break_until, questsLeft, daysSinceLastPhoto, daysSinceAnyLog, plan, loggedDates]);
 
   // Once per gym version (planner.ts GYM_VERSION): set the equipment list to what is really at the gym and build a
   // fresh plan from it. The version is stored in the plan itself, so web and phone agree and it never loops.
@@ -162,6 +164,7 @@ export default function DashboardScreen() {
       <BreakBanner onPress={() => router.push('/tracker/alarms')} />
       <StreakBanner days={dayStreak} loggedToday={loggedSomethingToday} onPress={() => router.push('/food/add')} />
       <QuestsCard workoutPlanned={todaysPlannedSessions.length > 0} workoutRoute={`/workout/${todayDow}/0`} />
+      {!!plan && <WeekPath days={plan.data.days} doneDates={loggedDates} today={todayStr} />}
 
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>
         <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} onChat={() => router.push('/coach-chat')} />
@@ -252,6 +255,22 @@ export default function DashboardScreen() {
  *  always a reason to come back and log something today rather than let the number reset. Tapping it when
  *  nothing is logged yet today jumps straight to adding a food entry, the quickest way to keep it alive. */
 function StreakBanner({ days, loggedToday, onPress }: { days: number; loggedToday: boolean; onPress: () => void }) {
+  // The flame breathes while the streak is alive, faster when it still needs today's log.
+  const flame = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (days === 0) return;
+    let loop: Animated.CompositeAnimation | null = null;
+    AccessibilityInfo.isReduceMotionEnabled?.().then((still) => {
+      if (still) return;
+      const ms = loggedToday ? 1400 : 650;
+      loop = Animated.loop(Animated.sequence([
+        Animated.timing(flame, { toValue: 1, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(flame, { toValue: 0, duration: ms, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ]));
+      loop.start();
+    }).catch(() => {});
+    return () => { loop?.stop(); };
+  }, [days > 0, loggedToday]);
   const color = loggedToday ? A.up : days > 0 ? A.cardio : C.muted;
   const title = days === 0 ? 'Start a streak today' : `${days} day streak`;
   const sub = loggedToday
@@ -265,7 +284,7 @@ function StreakBanner({ days, loggedToday, onPress }: { days: number; loggedToda
       accessibilityLabel={loggedToday ? `${title}, already logged today` : `${title}, tap to log something`}
       style={(p) => [sb.wrap, { borderTopColor: color }, smooth, !loggedToday && hovered(p) && { backgroundColor: C.card2 }]}
     >
-      <Text style={sb.flame}>{days > 0 ? '🔥' : '➕'}</Text>
+      <Animated.Text style={[sb.flame, days > 0 && { transform: [{ scale: flame.interpolate({ inputRange: [0, 1], outputRange: [1, 1.22] }) }, { rotate: flame.interpolate({ inputRange: [0, 1], outputRange: ['-6deg', '6deg'] }) }] }]}>{days > 0 ? '🔥' : '➕'}</Animated.Text>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[sb.title, { color }]}>{title}</Text>
         <Text style={sb.sub} numberOfLines={1}>{sub}</Text>

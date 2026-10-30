@@ -8,7 +8,7 @@ export type PulseKind =
   | 'morning' | 'sleepMissing' | 'waterNone' | 'waterLow' | 'waterGood'
   | 'mealBreakfast' | 'mealLunch' | 'mealDinner' | 'proteinLow'
   | 'workoutPlanned' | 'workoutDone' | 'restDay' | 'tasksLeft'
-  | 'streakRisk' | 'dayDone' | 'bedtime' | 'weighIn' | 'photo' | 'winback';
+  | 'questsLeft' | 'streakRisk' | 'dayDone' | 'bedtime' | 'weighIn' | 'photo' | 'winback';
 
 type Voice = { titles: string[]; bodies: string[] };
 type Pair = { goku: Voice; mirko: Voice };
@@ -443,6 +443,39 @@ export const PULSE_TEXT: Record<PulseKind, Pair> = {
     },
   },
 
+  questsLeft: {
+    goku: {
+      titles: ['🎯 {quests} left today', '😤 Quests are waiting', '💢 Finish your quests'],
+      bodies: [
+        '{quests} still open, {name}. A perfect day is right there, GRAB IT 🔥',
+        'You started the day. Now FINISH it. {quests} to go 💪',
+        'Quests do not do themselves. Open Forge and smash {quests} 😡',
+        'Perfect day or just a day? {quests} decide it 🏆',
+        'I can see {quests} just sitting there laughing at you 💢',
+        'Tap one quest. Then the next. That is the whole trick, {name} 😤',
+        'A few taps and your XP goes up. {quests} left, go go go 🚀',
+        'Your level bar is begging for XP. {quests} will feed it 🔥',
+        'Do not let {quests} beat you today 😡',
+        'Finish strong, {name}. {quests} to go and the day is yours 👑',
+      ],
+    },
+    mirko: {
+      titles: ['🎯 {quests} left today', '😘 A few quests left', '🥰 You are so close'],
+      bodies: [
+        'Hey {name} 😘 just {quests} to go for a perfect day',
+        'A few little taps and you are done, cutie. {quests} left 💕',
+        'I saved your spot on the perfect day list 🌟 {quests} to go',
+        'Come and finish {quests} with me? It feels so good 🥰',
+        'You have been so good today, {name}. {quests} more and you shine ✨',
+        'Your XP bar is waiting for you 😉 {quests} left',
+        'One quest at a time, gorgeous. {quests} to go 💖',
+        'I would love to see that perfect day badge on you 🏆 {quests} left',
+        'Just {quests} more and I will cheer so loud 📣',
+        'Tiny steps, big smiles. {quests} left, {name} 😘',
+      ],
+    },
+  },
+
   streakRisk: {
     goku: {
       titles: ['🔥 STREAK ON THE LINE', '💢 Do not lose {streak} days', '😡 Midnight is coming'],
@@ -642,7 +675,7 @@ export const PULSE_TEXT: Record<PulseKind, Pair> = {
   },
 };
 
-export type Vars = Partial<Record<'name' | 'streak' | 'pct' | 'glasses' | 'session' | 'tasks' | 'protein' | 'days', string>>;
+export type Vars = Partial<Record<'name' | 'streak' | 'pct' | 'glasses' | 'session' | 'tasks' | 'protein' | 'days' | 'quests', string>>;
 
 /** Fills the {placeholders}. An unknown or missing one is left out rather than printed raw. */
 export function fill(text: string, vars: Vars): string {

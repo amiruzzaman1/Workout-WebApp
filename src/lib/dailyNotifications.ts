@@ -24,6 +24,7 @@ export type DayState = {
   sleepLogged: boolean;
   workout: { planned: boolean; done: boolean; title: string | null };
   tasksLeft: number;
+  questsLeft: number;          // of today's quests, how many are still open
   streak: { days: number; loggedToday: boolean };
 };
 
@@ -85,12 +86,14 @@ export function pickKind(hour: number, s: DayState): PulseKind {
     case 18:
       if (workoutOpen) return 'workoutPlanned';
       if (!s.meals.dinner && !s.meals.lunch) return 'mealLunch';
+      if (s.questsLeft > 0 && s.questsLeft <= 4) return 'questsLeft';
       if (s.tasksLeft > 0) return 'tasksLeft';
       return s.workout.done ? 'workoutDone' : 'restDay';
     case 20:
       if (!s.meals.dinner) return 'mealDinner';
       if (proteinLow || (s.proteinPct != null && s.proteinPct < 0.8)) return 'proteinLow';
       if (waterBehind) return waterBehind;
+      if (s.questsLeft > 0 && s.questsLeft <= 3) return 'questsLeft';
       return risk ? 'streakRisk' : 'waterGood';
     default: // 22
       if (risk) return 'streakRisk';
@@ -102,7 +105,7 @@ export function pickKind(hour: number, s: DayState): PulseKind {
 /** A kind with its notification button set: food and water get Log food / +250 ml, training gets Start workout. */
 const CATEGORY_OF: Partial<Record<PulseKind, string>> = {
   waterNone: CATEGORY.logNudge, waterLow: CATEGORY.logNudge, mealBreakfast: CATEGORY.logNudge, mealLunch: CATEGORY.logNudge,
-  mealDinner: CATEGORY.logNudge, proteinLow: CATEGORY.logNudge, streakRisk: CATEGORY.logNudge, tasksLeft: CATEGORY.logNudge,
+  mealDinner: CATEGORY.logNudge, proteinLow: CATEGORY.logNudge, streakRisk: CATEGORY.logNudge, tasksLeft: CATEGORY.logNudge, questsLeft: CATEGORY.logNudge,
   workoutPlanned: CATEGORY.workoutNudge, morning: CATEGORY.coachNudge, workoutDone: CATEGORY.coachNudge, dayDone: CATEGORY.coachNudge,
 };
 
@@ -137,7 +140,7 @@ export function schedulePulses(today: DayState, tomorrow: DayState, name: string
       const vars: Vars = {
         name, streak: String(s.streak.days), pct: `${Math.round((s.waterPct ?? 0) * 100)}%`,
         glasses: left <= 0 ? 'a few sips' : `${left} glass${left === 1 ? '' : 'es'}`,
-        session: s.workout.title ?? 'your workout', tasks: `${s.tasksLeft} task${s.tasksLeft === 1 ? '' : 's'}`,
+        session: s.workout.title ?? 'your workout', tasks: `${s.tasksLeft} task${s.tasksLeft === 1 ? '' : 's'}`, quests: `${s.questsLeft} quest${s.questsLeft === 1 ? '' : 's'}`,
         protein: `${Math.round((s.proteinPct ?? 0) * 100)}%`, days: '',
       };
       const msg = pulseText(kind, style, `${stamp(day)}${hour}`, vars);
@@ -201,7 +204,7 @@ export function refreshTodayNotifications(opts: {
     meals: { breakfast: false, lunch: false, dinner: false }, waterPct: 0, waterGlassesLeft: 8,
     proteinPct: null, sleepLogged: false,
     workout: { planned: opts.tomorrowWorkout.planned, done: false, title: opts.tomorrowWorkout.title },
-    tasksLeft: 0, streak: { days: opts.today.streak.days, loggedToday: false },
+    tasksLeft: 0, questsLeft: 5, streak: { days: opts.today.streak.days, loggedToday: false },
   };
   schedulePulses(opts.today, tomorrow, opts.name);
   scheduleWeighInReminder(opts.daysSinceLastWeighIn, opts.name);

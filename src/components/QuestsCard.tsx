@@ -2,7 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { banterLine } from '../lib/banter';
+import { useCoachStyle } from '../lib/coachStyle';
+import { playSfx, useSfxEnabled } from '../lib/sfx';
 import { computeTargets } from '../lib/nutrition';
 import { todayISO } from '../lib/progress';
 import { useStore } from '../lib/store';
@@ -26,6 +29,15 @@ export function useXpInput(): XpInput {
   }), [foodEntries, water, sleep, weights, logs, visits, tasks, targets]);
 }
 
+/** How many of today's quests are still open, for the notifications to nag about. */
+export function useQuestsLeft(workoutPlanned: boolean): number {
+  const input = useXpInput();
+  const { tasks } = useStore();
+  const today = todayISO();
+  const tasksToday = useMemo(() => tasksForDay(tasks, today, today), [tasks, today]);
+  return useMemo(() => questsFor(today, input, { workoutPlanned, tasksToday, sleepNightOf: today }).filter((q) => !q.done).length, [input, today, workoutPlanned, tasksToday]);
+}
+
 /**
  * Level, XP and today's quests: the small wins that add up. Tapping a quest does it (water adds a glass, the
  * rest open the right screen). A level up, a new badge or a perfect day gets a celebration, once.
@@ -34,7 +46,10 @@ export function QuestsCard({ workoutPlanned, workoutRoute }: { workoutPlanned: b
   const router = useRouter();
   // A celebration waits until you are back on this screen, so it never pops up in the middle of a workout.
   const focused = useIsFocused();
-  const { ready, water, setWater, tasks, startVisit, activeVisit } = useStore();
+  const { ready, water, setWater, tasks, startVisit, activeVisit, profile } = useStore();
+  const [coachStyle] = useCoachStyle();
+  const [sfx, setSfx] = useSfxEnabled();
+  const pop = useRef(new Animated.Value(0)).current;
   const input = useXpInput();
   const today = todayISO();
   const tasksToday = useMemo(() => tasksForDay(tasks, today, today), [tasks, today]);
@@ -61,6 +76,9 @@ export function QuestsCard({ workoutPlanned, workoutRoute }: { workoutPlanned: b
       const fresh = quests.filter((q) => q.done && !prevDone.current![q.key]);
       if (fresh.length) {
         setBanner(`Quest done: ${fresh[0].title}  +${fresh[0].xp} XP`);
+        playSfx('ding');
+        pop.setValue(0);
+        Animated.spring(pop, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }).start();
         setTimeout(() => setBanner(null), 3500);
       }
     }
@@ -88,7 +106,7 @@ export function QuestsCard({ workoutPlanned, workoutRoute }: { workoutPlanned: b
       else next.perfect = seen.perfect;
       next.ach = [...new Set([...seen.ach, ...doneIds])];
       next.level = Math.max(seen.level, lvl.level);
-      if (add.length) { setQueue((q) => [...q, ...add]); await AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {}); }
+      if (add.length) { playSfx('levelup'); setQueue((q) => [...q, ...add]); await AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {}); }
       else if (next.ach.length !== seen.ach.length || next.level !== seen.level) await AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
     })();
   }, [ready, achievements.filter((a) => a.done).length, lvl.level, perfect]);
@@ -103,6 +121,8 @@ export function QuestsCard({ workoutPlanned, workoutRoute }: { workoutPlanned: b
   }
 
   const next = quests.find((q) => !q.done);
+  const firstName = (profile?.display_name ?? '').trim().split(/\s+/)[0] || 'champ';
+  const say = banterLine(coachStyle, doneQuests, quests.length, firstName, today);
   return (
     <View style={s.card}>
       <Row style={{ gap: 12 }}>
@@ -119,7 +139,20 @@ export function QuestsCard({ workoutPlanned, workoutRoute }: { workoutPlanned: b
       <View style={s.track}><View style={[s.fill, { width: `${Math.round(lvl.pct * 100)}%` }]} /></View>
       <Text style={s.tiny}>{lvl.into} of {lvl.need} XP to level {lvl.level + 1}</Text>
 
-      {!!banner && <View style={s.banner}><Ionicons name="checkmark-circle" size={16} color={A.up} /><Text style={s.bannerText}>{banner}</Text></View>}
+      {/* The coach talks, like the character in a language app. */}
+      <View style={s.say}>
+        <Image source={coachStyle === 'male' ? require('../../assets/Goku.png') : require('../../assets/Mirko.png')} resizeMode="contain" style={s.mascot} accessibilityLabel="Your coach" />
+        <View style={s.bubble}><View style={s.bubbleTip} /><Text style={s.bubbleText}>{say}</Text></View>
+        <Pressable onPress={() => setSfx(!sfx)} hitSlop={8} accessibilityRole="switch" accessibilityState={{ checked: sfx }} accessibilityLabel="Sound effects">
+          <Ionicons name={sfx ? 'volume-medium-outline' : 'volume-mute-outline'} size={18} color={sfx ? C.muted : C.faint} />
+        </Pressable>
+      </View>
+
+      {!!banner && (
+        <Animated.View style={[s.banner, { transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }] }]}>
+          <Ionicons name="checkmark-circle" size={16} color={A.up} /><Text style={s.bannerText}>{banner}</Text>
+        </Animated.View>
+      )}
 
       <Text style={s.heading}>Today's quests · {doneQuests} of {quests.length}</Text>
       {quests.map((q) => (
@@ -157,6 +190,11 @@ const s = StyleSheet.create({
   qTitle: { color: C.text, fontFamily: F.bodySemi, fontSize: 14 },
   qSub: { color: C.muted, fontFamily: F.body, fontSize: 12 },
   xp: { color: A.carbs, fontFamily: F.displayMed, fontSize: 13 },
+  say: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  mascot: { width: 54, height: 54 },
+  bubble: { flex: 1, minWidth: 0, backgroundColor: C.card2, borderRadius: R.md, paddingVertical: 8, paddingHorizontal: 12 },
+  bubbleTip: { position: 'absolute', left: -5, top: 20, width: 10, height: 10, backgroundColor: C.card2, transform: [{ rotate: '45deg' }] },
+  bubbleText: { color: C.text, fontFamily: F.bodyMed, fontSize: 13, lineHeight: 18 },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: A.up + '1f', borderRadius: R.sm, paddingVertical: 8, paddingHorizontal: 10, marginTop: 6 },
   bannerText: { color: A.up, fontFamily: F.bodySemi, fontSize: 13, flex: 1 },
 });

@@ -196,14 +196,16 @@ export function Button({
       accessibilityState={{ disabled: !!(disabled || loading) }}
       style={(st) => [
         s.btn, small && s.btnSmall, smooth,
-        primary && { backgroundColor: C.inverse },
+        // A chunky edge along the bottom that squashes when pressed, so buttons feel pressable.
+        primary && { backgroundColor: C.inverse, borderBottomWidth: small ? 3 : 4, borderBottomColor: '#8c8c8c' },
         primary && hovered(st) && !disabled && { backgroundColor: '#dcdcdc' },
-        kind === 'secondary' && { borderWidth: 1, borderColor: C.borderStrong },
+        kind === 'secondary' && { borderWidth: 1, borderColor: C.borderStrong, borderBottomWidth: small ? 3 : 4 },
         kind === 'secondary' && hovered(st) && !disabled && { backgroundColor: C.card2, borderColor: tint ?? C.text },
         kind === 'ghost' && hovered(st) && !disabled && { backgroundColor: C.card2 },
         kind === 'danger' && { borderWidth: 1, borderColor: C.border },
         kind === 'danger' && hovered(st) && !disabled && { borderColor: A.over, backgroundColor: A.over + '14' },
-        (st.pressed || disabled) && { opacity: 0.55 }, style,
+        st.pressed && !disabled && (primary || kind === 'secondary') && { transform: [{ translateY: 2 }], borderBottomWidth: 1 },
+        disabled && { opacity: 0.55 }, style,
       ]}
     >
       {(st: any) => {
