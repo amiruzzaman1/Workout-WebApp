@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CardioFields } from '../../../../../src/components/CardioFields';
+import { Celebration, CelebrationModal } from '../../../../../src/components/Celebrate';
 import { ExerciseList } from '../../../../../src/components/ExerciseList';
 import { GymCaption, GymThumb } from '../../../../../src/components/GymPhoto';
 import { ExerciseThumb } from '../../../../../src/components/ExerciseAnimation';
@@ -34,6 +35,8 @@ export default function WorkoutScreen() {
   const isToday = today === todayISO();
 
   const [adding, setAdding] = useState(false);
+  const [summary, setSummary] = useState<Celebration | null>(null);
+  const prCount = useRef(0);
   const [rest, setRest] = useState<{ until: number; total: number } | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -85,8 +88,17 @@ export default function WorkoutScreen() {
   };
   const ensureTimer = () => { if (isToday && !activeVisit) startVisit(session.title); };
   async function finish() {
+    const secs = activeVisit ? visitSeconds(activeVisit, Date.now()) : 0;
     if (isToday) await endVisit();
-    router.replace('/progress');
+    const sets = todays.filter((l) => mainItems.some((it) => it.exerciseId === l.exercise_id)).length;
+    if (sets === 0) { router.replace('/progress'); return; }
+    const volume = Math.round(todays.reduce((a, l) => a + (l.unit === 'kg' && l.weight_kg != null && l.reps != null ? Number(l.weight_kg) * l.reps : 0), 0));
+    const xpGain = 50 + 2 * Math.min(20, sets);
+    setSummary({
+      emoji: prCount.current > 0 ? '🏆' : '💪',
+      title: prCount.current > 0 ? `Workout done, ${prCount.current} new personal best${prCount.current === 1 ? '' : 's'}!` : 'Workout done!',
+      lines: [`${sets} sets${volume > 0 ? `, ${volume.toLocaleString()} kg lifted` : ''}${secs > 60 ? `, ${fmtDuration(secs)} in the gym` : ''}`, `+${xpGain} XP earned`, 'Eat well, drink water, sleep. That is how you grow.'],
+    });
   }
 
   return (
@@ -144,7 +156,7 @@ export default function WorkoutScreen() {
             </Row>
             <Text style={st.meta}>Picked for what today trains. Light and easy, nothing near failure.</Text>
             {warmups.map((it, i) => (
-              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} compact who={who} onChangeItem={changeItem}
+              <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} compact who={who} onChangeItem={changeItem} onPR={() => { prCount.current += 1; }}
                 onRest={() => ensureTimer()} />
             ))}
           </View>
@@ -152,13 +164,14 @@ export default function WorkoutScreen() {
 
         <Row style={{ gap: 7, marginTop: 22 }}><Ionicons name="barbell" size={15} color={A.fat} /><Text style={[st.sectionLabel, { color: A.fat }]}>Working sets</Text></Row>
         {mainItems.map((it, i) => (
-          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} who={who} onChangeItem={changeItem} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
+          <ExerciseBlock key={it.uid} index={i} item={it} sessionTitle={session.title} date={today} who={who} onChangeItem={changeItem} onPR={() => { prCount.current += 1; }} onRest={(sec) => { ensureTimer(); if (sec > 0) setRest({ until: Date.now() + sec * 1000, total: sec }); }} />
         ))}
 
         <Button kind="secondary" icon="add-circle-outline" title="Add an exercise" onPress={() => setAdding(true)} style={{ marginTop: 18 }} />
         <Button icon="flag" title={isToday && activeVisit ? `Finish workout · ${fmtDuration(visitSeconds(activeVisit, now))}` : 'Finish workout'} onPress={finish} style={{ marginTop: 24 }} />
       </Screen>
 
+      <CelebrationModal item={summary} buttonLabel="See my progress" onClose={() => { setSummary(null); router.replace('/progress'); }} />
       <Modal visible={adding} animationType="slide" onRequestClose={() => setAdding(false)}>
         <View style={{ flex: 1, backgroundColor: C.bg, paddingTop: 12 }}>
           <Row style={{ paddingHorizontal: 16, justifyContent: 'space-between', width: '100%', maxWidth: 760, alignSelf: 'center' }}>
@@ -184,7 +197,7 @@ export default function WorkoutScreen() {
   );
 }
 
-function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, onChangeItem }: { item: PlanItem; index: number; sessionTitle: string; date: string; onRest: (sec: number) => void; compact?: boolean; who: ReturnType<typeof whoFrom>; onChangeItem: (uid: string, changes: Partial<PlanItem>) => void }) {
+function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, onChangeItem, onPR }: { item: PlanItem; index: number; sessionTitle: string; date: string; onRest: (sec: number) => void; compact?: boolean; who: ReturnType<typeof whoFrom>; onChangeItem: (uid: string, changes: Partial<PlanItem>) => void; onPR: () => void }) {
   const router = useRouter();
   const { logs, addLog, deleteLog, updateLog } = useStore();
   const e = getExercise(item.exerciseId);
@@ -223,6 +236,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
   const [rows, setRows] = useState<Draft[]>(init);
   const busy = useRef(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pr, setPr] = useState<string | null>(null);
 
   const setRow = (k: number, ch: Partial<Draft>) => setRows((r) => r.map((x, j) => (j === k ? { ...x, ...ch } : x)));
 
@@ -243,6 +257,12 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
           unit, session_title: sessionTitle, target_reps: item.reps, metric,
         };
         const saved = await addLog(row);
+        // A personal best: heavier than any set of this exercise on an earlier day (same unit, weights only).
+        if (unit === 'kg' && weight != null && weight > 0) {
+          const before = logs.filter((l) => l.exercise_id === item.exerciseId && l.performed_on < today && l.unit === 'kg' && l.weight_kg != null);
+          const prev = before.reduce((m, l) => Math.max(m, Number(l.weight_kg)), 0);
+          if (prev > 0 && weight > prev && !pr) { setPr(`New personal best: ${weight} kg, up from ${prev} kg`); onPR(); }
+        }
         // carry the weight forward to the next empty set
         setRows((rs) => rs.map((x, j) => (j === k ? { ...x, reps: reps == null ? '' : String(reps), logId: saved.id } : j > k && !x.logId && x.weight === '' ? { ...x, weight: r.weight } : x)));
         onRest(item.restSec);
@@ -292,6 +312,7 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
         </View>
       )}
       {item.note && <Text style={st.meta}>{item.note}</Text>}
+      {!!pr && <View style={st.prBox}><Text style={st.prText}>🏆 {pr}</Text></View>}
       {cardioKind(item.exerciseId) && <CardioFields item={item} who={who} onChange={(ch) => onChangeItem(item.uid, ch)} />}
 
       {range && !timed && (machineLike || unit === 'bw') && (
@@ -377,6 +398,8 @@ function ExerciseBlock({ item, index, sessionTitle, date, onRest, compact, who, 
 
 const st = StyleSheet.create({
   meta: { color: C.muted, fontFamily: F.body, fontSize: 12 },
+  prBox: { backgroundColor: A.carbs + '22', borderWidth: 1, borderColor: A.carbs, borderRadius: R.sm, paddingVertical: 8, paddingHorizontal: 12 },
+  prText: { color: A.carbs, fontFamily: F.bodySemi, fontSize: 14 },
   timer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 10, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.border },
   timerLabel: { color: C.muted, fontFamily: F.bodySemi, fontSize: 10, letterSpacing: 1.4 },
   timerClock: { color: C.text, fontFamily: F.display, fontSize: 24, letterSpacing: -0.7, fontVariant: ['tabular-nums'] },

@@ -6,6 +6,7 @@ import { CoachCard } from '../../../src/components/CoachCard';
 import { Dashboard } from '../../../src/components/Dashboard';
 import { GroupIcon } from '../../../src/components/GroupIcon';
 import { BreakBanner } from '../../../src/components/BreakCard';
+import { QuestsCard } from '../../../src/components/QuestsCard';
 import { SessionPreview } from '../../../src/components/SessionPreview';
 import { Button, Eyebrow, H1, hovered, IconBadge, P, Row, Screen, Section, smooth } from '../../../src/components/ui';
 import { buildCoachContext, coachMessage, trainingStreak } from '../../../src/lib/coach';
@@ -160,6 +161,7 @@ export default function DashboardScreen() {
     <Screen>
       <BreakBanner onPress={() => router.push('/tracker/alarms')} />
       <StreakBanner days={dayStreak} loggedToday={loggedSomethingToday} onPress={() => router.push('/food/add')} />
+      <QuestsCard workoutPlanned={todaysPlannedSessions.length > 0} workoutRoute={`/workout/${todayDow}/0`} />
 
       <Section title="Your coach" icon="megaphone" color={A.cardio} big>
         <CoachCard coach={coach} gender={coachStyle} onReroll={() => setSeed(Math.random())} onChat={() => router.push('/coach-chat')} />

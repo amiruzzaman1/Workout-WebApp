@@ -10,6 +10,7 @@ export default function HomeStack() {
       <Stack.Screen name="workout/[day]/[idx]" options={{ title: '' }} />
       <Stack.Screen name="session/[day]/[idx]" options={{ title: 'Edit session' }} />
       <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
+      <Stack.Screen name="achievements" options={{ title: '' }} />
       <Stack.Screen name="week" options={{ title: '' }} />
     </Stack>
   );
