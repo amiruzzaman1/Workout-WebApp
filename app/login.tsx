@@ -45,7 +45,7 @@ export default function Login() {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
       } else {
-        const redirect = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const redirect = Platform.OS === 'web' && typeof window !== 'undefined' && window.location ? window.location.origin : undefined;
         const { data, error } = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: redirect } });
         if (error) throw error;
         if (!data.session) setMsg({ text: 'Account created. Check your email for the confirmation link, then sign in.' });

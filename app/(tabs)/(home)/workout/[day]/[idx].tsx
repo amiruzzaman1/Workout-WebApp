@@ -183,7 +183,8 @@ export default function WorkoutScreen() {
       </Modal>
 
       {rest && (
-        <View style={[st.restBar, { paddingBottom: insets.bottom + 14 }]}>
+        // paddingRight leaves room for the floating mic button, so it never covers +30s or Skip.
+        <View style={[st.restBar, { paddingBottom: insets.bottom + 14, paddingRight: 88 }]}>
           <View style={{ flex: 1 }}>
             <Text style={st.restLabel}>{restLeft > 0 ? 'REST' : 'GO'}</Text>
             <Text style={st.restTime}>{restLeft > 0 ? `${Math.floor(restLeft / 60)}:${String(restLeft % 60).padStart(2, '0')}` : 'Next set'}</Text>

@@ -50,7 +50,7 @@ export function NumberField({
           onBlur={() => commit(text, true)}
           keyboardType="decimal-pad"
           placeholder={placeholder}
-          style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 }}
+          style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0, paddingRight: suffix ? 38 : undefined }}
         />
         {!!suffix && <Text style={st.suffix}>{suffix}</Text>}
       </View>
@@ -133,15 +133,15 @@ export function DobInput({ value, onChange }: { value: string | null; onChange: 
       <Row style={{ gap: 8 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={st.tiny}>Day</Text>
-          <Input value={d} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 2); setD(v); push(v, m, y); }} keyboardType="number-pad" placeholder="20" />
+          <Input value={d} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 2); setD(v); push(v, m, y); }} keyboardType="number-pad" placeholder="DD" />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={st.tiny}>Month</Text>
-          <Input value={m} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 2); setM(v); push(d, v, y); }} keyboardType="number-pad" placeholder="12" />
+          <Input value={m} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 2); setM(v); push(d, v, y); }} keyboardType="number-pad" placeholder="MM" />
         </View>
         <View style={{ flex: 1.3, minWidth: 0 }}>
           <Text style={st.tiny}>Year</Text>
-          <Input value={y} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 4); setY(v); push(d, m, v); }} keyboardType="number-pad" placeholder="1999" />
+          <Input value={y} onChangeText={(t) => { const v = t.replace(/\D/g, '').slice(0, 4); setY(v); push(d, m, v); }} keyboardType="number-pad" placeholder="YYYY" />
         </View>
       </Row>
       {age != null ? (

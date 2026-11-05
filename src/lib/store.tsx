@@ -5,6 +5,7 @@ import { Exercise, setCustomExercises } from './exercises';
 import { generatePlan, PlanData, Profile } from './planner';
 import { Food, FoodEntry, FoodMeasure, measureKey } from './nutrition';
 import { GymVisit, LogRow, todayISO } from './progress';
+import { OWNER_EMAIL } from './owner';
 import { Recipe } from './recipes';
 import { Alarm } from './alarms';
 import { CoachMessage, CoachStyle } from './coachStyle';
@@ -433,9 +434,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (p?: Profile) => {
       const prof = p ?? profile;
       if (!prof) return;
-      await savePlan(generatePlan(prof));
+      await savePlan(generatePlan(prof, { chestFocus: session?.user.email?.toLowerCase() === OWNER_EMAIL }));
     },
-    [profile, savePlan],
+    [profile, savePlan, session],
   );
 
   const setEquipment = useCallback(async (keys: string[]) => {

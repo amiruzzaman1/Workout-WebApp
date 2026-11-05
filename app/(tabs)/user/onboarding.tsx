@@ -173,16 +173,11 @@ export default function Onboarding() {
           </Row>
         )}
 
-        <Row style={{ gap: 10 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Label>Weight now</Label>
-            <NumberField value={Number(f.weight_kg) || null} onChange={(v) => set('weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="82" suffix="kg" />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Label>Goal weight</Label>
-            <NumberField value={Number(f.target_weight_kg) || null} onChange={(v) => set('target_weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="optional" suffix="kg" />
-          </View>
-        </Row>
+        <Label>Weight now</Label>
+        <NumberField value={Number(f.weight_kg) || null} onChange={(v) => set('weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="82" suffix="kg" />
+
+        <Label>Goal weight</Label>
+        <NumberField value={Number(f.target_weight_kg) || null} onChange={(v) => set('target_weight_kg', v as any)} step={0.5} min={30} max={300} placeholder="optional" suffix="kg" />
 
         <Label>Date of birth</Label>
         <DobInput value={dob} onChange={setDob} />

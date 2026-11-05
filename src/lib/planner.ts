@@ -91,7 +91,7 @@ export type PlanSession = {
 export type PlanDay = { day: number; sessions: PlanSession[] };
 
 /** Bump this whenever the gym's equipment list or the exercise slots change: the owner's account then rebuilds its equipment and plan once. */
-export const GYM_VERSION = 'jetts-newtown-2026-10-25';
+export const GYM_VERSION = 'jetts-newtown-2026-11-06-chest-spaced';
 
 export type PlanData = {
   version: 1;
@@ -139,10 +139,15 @@ export const SLOTS: Record<string, string[]> = {
   triceps2: ['Cable_Rope_Overhead_Triceps_Extension', 'Standing_Dumbbell_Triceps_Extension', 'Tricep_Dumbbell_Kickback'],
   core: ['Plank', 'Cable_Crunch', 'Ab_Crunch_Machine', 'Crunches', 'Dead_Bug'],
   core2: ['Pallof_Press', 'Reverse_Crunch', 'Knee_Hip_Raise_On_Parallel_Bars', 'Side_Bridge', 'Dead_Bug'],
+  // More chest work, used by the chest focus plan (see CHEST_FOCUS below). Each list only uses kit the gym has.
+  chest_cable: ['Cable_Crossover', 'Low_Cable_Crossover', 'Flat_Bench_Cable_Flyes', 'Single-Arm_Cable_Crossover', 'Cable_Chest_Press'],
+  decline_push: ['Smith_Machine_Decline_Press', 'Decline_Dumbbell_Bench_Press', 'Dips_-_Chest_Version'],
+  chest_press2: ['Dumbbell_Bench_Press', 'Smith_Machine_Bench_Press', 'Barbell_Bench_Press_-_Medium_Grip', 'Pushups'],
+  pullover: ['Bent-Arm_Dumbbell_Pullover', 'Straight-Arm_Dumbbell_Pullover'],
   cardio: ['Walking_Treadmill', 'Bicycling_Stationary', 'Elliptical_Trainer', 'Rowing_Stationary', 'Stairmaster'],
 };
 
-const ISOLATION = new Set(['lateral', 'rear_delt', 'biceps', 'biceps2', 'triceps', 'triceps2', 'calves', 'chest_fly', 'leg_ext', 'leg_curl', 'glutes', 'back_iso']);
+const ISOLATION = new Set(['lateral', 'rear_delt', 'biceps', 'biceps2', 'triceps', 'triceps2', 'calves', 'chest_fly', 'chest_cable', 'pullover', 'leg_ext', 'leg_curl', 'glutes', 'back_iso']);
 const CORE = new Set(['core', 'core2']);
 
 /** Warm-up drills, picked to match what the session trains. */
@@ -178,6 +183,37 @@ const T: Record<string, Template> = {
   shoulders: { key: 'shoulders', title: 'Shoulders', groups: ['shoulders'], slots: ['v_push', 'lateral', 'rear_delt', 'core2', 'core'] },
   arms: { key: 'arms', title: 'Arms', groups: ['biceps', 'triceps'], slots: ['biceps', 'triceps', 'biceps2', 'triceps2', 'core'] },
 };
+
+/**
+ * Chest focus (used for the owner's account): every session that trains the chest gets two or three more chest
+ * exercises, pressing from flat, incline and decline, plus fly and cable work, so the chest is trained twice a week
+ * with a lot of volume. Same equipment rules as everything else, so only kit the gym has is used.
+ */
+const CHEST_FOCUS: Record<string, string[]> = {
+  fbA: ['h_push', 'squat', 'v_pull', 'chest_cable', 'hinge', 'lateral', 'core', 'triceps'],
+  fbB: ['incline_push', 'leg_curl', 'h_pull', 'chest_fly', 'lunge', 'v_push', 'core2', 'rear_delt'],
+  upper: ['h_push', 'incline_push', 'chest_fly', 'v_pull', 'chest_cable', 'h_pull', 'v_push', 'triceps'],
+  push: ['h_push', 'incline_push', 'decline_push', 'chest_fly', 'chest_cable', 'v_push', 'lateral', 'triceps'],
+  chest: ['h_push', 'incline_push', 'decline_push', 'chest_fly', 'chest_cable', 'pullover', 'core'],
+};
+
+/**
+ * Chest focus is one session a day with a rest day between every two, so it uses a three session rotation that
+ * trains the chest in two of every three sessions (upper, lower, push) and never puts two sessions on one day.
+ */
+const CHEST_ROTATION = ['upper', 'lower', 'push'];
+
+/** Keeps the training days that have a rest day on both sides (Sunday and Monday count as neighbours). */
+function spacedDays(days: number[]): number[] {
+  const chosen: number[] = [];
+  for (const d of WEEK_ORDER) {
+    if (!days.includes(d)) continue;
+    if (chosen.some((c) => Math.abs(WEEK_ORDER.indexOf(c) - WEEK_ORDER.indexOf(d)) === 1)) continue;
+    chosen.push(d);
+  }
+  if (chosen.length > 1 && chosen.includes(1) && chosen.includes(0)) chosen.splice(chosen.indexOf(0), 1);
+  return chosen;
+}
 
 const ROTATIONS: Record<Exclude<SplitChoice, 'auto'>, string[]> = {
   full_body: ['fbA', 'fbB'],
@@ -361,13 +397,16 @@ function buildCardio(p: Profile, equipment: Set<string>, exclude: { slots: Set<s
 }
 
 // ---------- Main ----------
-export function generatePlan(p: Profile): PlanData {
+export function generatePlan(p: Profile, opts: { chestFocus?: boolean } = {}): PlanData {
   const split = resolveSplit(p);
-  const rotation = ROTATIONS[split];
+  const training = new Set(opts.chestFocus ? spacedDays(p.training_days) : p.training_days);
+  const doubles = new Set(!opts.chestFocus && p.sessions_per_day > 1 ? p.double_days : []);
+  const rotation = opts.chestFocus ? CHEST_ROTATION : ROTATIONS[split];
+  const templates: Record<string, Template> = opts.chestFocus
+    ? Object.fromEntries(Object.entries(T).map(([k, t]) => [k, CHEST_FOCUS[k] ? { ...t, slots: CHEST_FOCUS[k] } : t]))
+    : T;
   const equipment = new Set(p.equipment);
   const exclude = injuryExclusions(p.injuries);
-  const training = new Set(p.training_days);
-  const doubles = new Set(p.sessions_per_day > 1 ? p.double_days : []);
   const notes: string[] = [];
 
   // Simulate two weeks so recovery across Sunday→Monday is respected; keep week 2.
@@ -386,7 +425,7 @@ export function generatePlan(p: Profile): PlanData {
         const ok = (t: Template) => t.groups.every((g) => lastTrained[g] === undefined || dayIndex - lastTrained[g] >= 2);
         let first: Template | null = null;
         for (let k = 0; k < rotation.length; k++) {
-          const t = T[rotation[(rot + k) % rotation.length]];
+          const t = templates[rotation[(rot + k) % rotation.length]];
           if (ok(t)) {
             first = t;
             rot = (rot + k + 1) % rotation.length;
@@ -405,7 +444,7 @@ export function generatePlan(p: Profile): PlanData {
           if (p.experience !== 'beginner' && first) {
             const used = new Set(first.groups);
             for (let k = 0; k < rotation.length; k++) {
-              const t = T[rotation[(rot + k) % rotation.length]];
+              const t = templates[rotation[(rot + k) % rotation.length]];
               if (ok(t) && t.groups.every((g) => !used.has(g))) {
                 second = t;
                 rot = (rot + k + 1) % rotation.length;
@@ -426,6 +465,7 @@ export function generatePlan(p: Profile): PlanData {
     result = days;
   }
 
+  if (opts.chestFocus) notes.push('Chest focus: one session a day with a rest day in between. Your chest is trained in two of every three sessions, with flat, incline and decline presses, a fly machine and cable moves. Exercise cannot burn fat from one spot, so the leaner look comes from your calorie deficit and the cardio finishers, while this builds the muscle underneath.');
   if (p.experience === 'beginner') {
     notes.push('Beginner plan: pick a weight you could lift 3 or 4 more times at the end of each set. Add a little weight once you hit the top of the rep range on every set.');
   }
@@ -438,7 +478,7 @@ export function generatePlan(p: Profile): PlanData {
   }
   if (p.injuries) notes.push('You mentioned an injury, so exercises that commonly aggravate it were left out. Stop anything that causes pain and check with a physio.');
 
-  return { version: 1, generatedAt: new Date().toISOString(), gym: GYM_VERSION, split, notes, days: result };
+  return { version: 1, generatedAt: new Date().toISOString(), gym: GYM_VERSION, split: opts.chestFocus ? 'upper_lower' : split, notes, days: result };
 }
 
 /** Alternatives for swapping: same slot first, then anything hitting the same primary muscle. */
