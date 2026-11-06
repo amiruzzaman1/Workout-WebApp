@@ -86,12 +86,19 @@ export type PlanSession = {
   focus: string[];
   warmup?: string;
   items: PlanItem[];
+  /** Extra, skippable session (an easy run on a rest day). It never counts as a planned workout or a missed one. */
+  optional?: boolean;
 };
 
 export type PlanDay = { day: number; sessions: PlanSession[] };
 
+/** True when the day has a real planned workout, so an optional easy run alone still counts as a rest day. */
+export function hasPlanned(sessions: unknown[] | undefined): boolean {
+  return !!sessions?.some((s) => !(s as PlanSession).optional);
+}
+
 /** Bump this whenever the gym's equipment list or the exercise slots change: the owner's account then rebuilds its equipment and plan once. */
-export const GYM_VERSION = 'jetts-newtown-2026-11-06-chest-spaced';
+export const GYM_VERSION = 'jetts-newtown-2026-11-06-chest-run';
 
 export type PlanData = {
   version: 1;
@@ -396,6 +403,28 @@ function buildCardio(p: Profile, equipment: Set<string>, exclude: { slots: Set<s
   };
 }
 
+/** An easy 20 minute jog on the treadmill (the walking treadmill if jogging is not available), for a rest day. */
+function buildOptionalRun(p: Profile, equipment: Set<string>, exclude: { slots: Set<string>; ids: Set<string> }): PlanSession | null {
+  const id = ['Jogging_Treadmill', 'Walking_Treadmill'].find((x) => {
+    const e = getExercise(x);
+    return !!e && !exclude.ids.has(x) && isAvailable(e, equipment);
+  });
+  if (!id) return null;
+  const jog = id === 'Jogging_Treadmill';
+  const cardio = { ...cardioFor(id, 'easy', p), ...(jog ? { mode: 'jog' as const, speedKmh: 6.5, incline: 1 } : {}) };
+  return {
+    id: uid(),
+    title: 'Optional Easy Run',
+    type: 'cardio',
+    focus: ['cardio'],
+    optional: true,
+    items: [{
+      uid: uid(), exerciseId: id, slot: 'cardio', phase: 'main', sets: 1, reps: '20', metric: 'minutes', restSec: 0,
+      note: 'Optional. Easy pace where you can still talk. Walk if you prefer, or skip it and rest.', cardio,
+    }],
+  };
+}
+
 // ---------- Main ----------
 export function generatePlan(p: Profile, opts: { chestFocus?: boolean } = {}): PlanData {
   const split = resolveSplit(p);
@@ -460,12 +489,17 @@ export function generatePlan(p: Profile, opts: { chestFocus?: boolean } = {}): P
           }
         }
       }
+      // Chest focus: rest days get an optional easy run, except Sunday, which stays a full rest before Monday.
+      if (opts.chestFocus && !training.has(dow) && dow !== 0) {
+        const run = buildOptionalRun(p, equipment, exclude);
+        if (run) sessions.push(run);
+      }
       days.push({ day: dow, sessions });
     });
     result = days;
   }
 
-  if (opts.chestFocus) notes.push('Chest focus: one session a day with a rest day in between. Your chest is trained in two of every three sessions, with flat, incline and decline presses, a fly machine and cable moves. Exercise cannot burn fat from one spot, so the leaner look comes from your calorie deficit and the cardio finishers, while this builds the muscle underneath.');
+  if (opts.chestFocus) notes.push('Chest focus: one session a day with a rest day in between. Your chest is trained in two of every three sessions, with flat, incline and decline presses, a fly machine and cable moves. Rest days (except Sunday) have an optional easy treadmill run: do it if you feel good, skip it if you are tired. Exercise cannot burn fat from one spot, so the leaner look comes from your calorie deficit and the cardio finishers, while this builds the muscle underneath.');
   if (p.experience === 'beginner') {
     notes.push('Beginner plan: pick a weight you could lift 3 or 4 more times at the end of each set. Add a little weight once you hit the top of the rep range on every set.');
   }
@@ -473,7 +507,7 @@ export function generatePlan(p: Profile, opts: { chestFocus?: boolean } = {}): P
     notes.push('Two-session days: leave at least 6 hours between sessions. The second session never repeats the muscles from the first.');
     if (p.experience === 'beginner') notes.push('As a beginner your second session is light cardio and mobility, so your muscles can recover.');
   }
-  if (result.some((d) => d.sessions.some((s) => s.type === 'cardio')) && doubles.size === 0) {
+  if (result.some((d) => d.sessions.some((s) => s.type === 'cardio' && !s.optional)) && doubles.size === 0) {
     notes.push('Some days are cardio & core because your muscles need 48 hours between hard sessions.');
   }
   if (p.injuries) notes.push('You mentioned an injury, so exercises that commonly aggravate it were left out. Stop anything that causes pain and check with a physio.');

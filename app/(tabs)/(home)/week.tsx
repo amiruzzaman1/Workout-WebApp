@@ -141,7 +141,7 @@ export default function WeekScreen() {
                   </Text>
                   {done && i === 0 ? <Row style={{ gap: 4 }}><Ionicons name="checkmark-circle" size={14} color={A.up} /><Text style={[st.cardDay, { color: A.up }]}>DONE</Text></Row> : <Ionicons name="chevron-forward" size={14} color={C.faint} />}
                 </Row>
-                <Text style={st.cardTitle}>{s2.title}</Text>
+                <Text style={st.cardTitle}>{s2.title}{s2.optional ? ' (rest day, skip if tired)' : ''}</Text>
                 <Row wrap style={{ gap: 5, marginTop: 2 }}>
                   {groups.map((g) => (
                     <View key={g} style={[st.tag, { borderColor: groupColor(g) }]}>

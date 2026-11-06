@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { AccessibilityInfo, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
-import { DAY_SHORT, PlanDay, WEEK_ORDER } from '../lib/planner';
+import { DAY_SHORT, hasPlanned, PlanDay, WEEK_ORDER } from '../lib/planner';
 import { A, C, F, R } from '../lib/theme';
 import { hovered, smooth } from './ui';
 
@@ -35,14 +35,14 @@ export function WeekPath({ days, doneDates, today }: { days: PlanDay[]; doneDate
     d.setDate(monday.getDate() + i);
     const date = iso(d);
     const sessions = days.find((x) => x.day === dow)?.sessions ?? [];
-    const planned = sessions.length > 0;
+    const planned = hasPlanned(sessions);
     const done = doneDates.has(date);
     let state: NodeState;
     if (date === today) state = done ? 'todayDone' : planned ? 'today' : 'rest';
     else if (!planned) state = 'rest';
     else if (done) state = 'done';
     else state = date < today ? 'missed' : 'upcoming';
-    return { dow, date, state, planned, title: sessions[0]?.title ?? 'Rest day' };
+    return { dow, date, state, planned, title: sessions.find((x) => !x.optional)?.title ?? 'Rest day' };
   });
   const doneCount = nodes.filter((n) => n.state === 'done' || n.state === 'todayDone').length;
   const plannedCount = nodes.filter((n) => n.planned).length;

@@ -55,7 +55,7 @@ export default function DashboardScreen() {
   // (goalPct) the notification milestone check below, built once here so all three stay in sync. Tolerates
   // plan being null (no plan built yet), unlike plan.data.days used further down, which needs the early
   // return below first.
-  const questsLeft = useQuestsLeft((plan ? plan.data.days.find((d) => d.day === new Date(`${todayStr}T12:00:00`).getDay())?.sessions.length ?? 0 : 0) > 0);
+  const questsLeft = useQuestsLeft((plan ? plan.data.days.find((d) => d.day === new Date(`${todayStr}T12:00:00`).getDay())?.sessions.filter((s) => !s.optional).length ?? 0 : 0) > 0);
   const coachContext = buildCoachContext({ plan, loggedDates, profile, foodEntries, water, sleep, weights });
 
   // Celebrates crossing a real milestone the moment it is seen, not on a schedule: see src/lib/milestones.ts.
@@ -70,7 +70,7 @@ export default function DashboardScreen() {
   const todayTasks = useMemo(() => tasksForDay(tasks, todayStr, todayStr), [tasks, todayStr]);
   const todayUndone = todayTasks.filter((t) => !t.done).length;
   const todayDow = new Date(`${todayStr}T12:00:00`).getDay();
-  const todaysPlannedSessions = plan ? plan.data.days.find((d) => d.day === todayDow)?.sessions ?? [] : [];
+  const todaysPlannedSessions = plan ? (plan.data.days.find((d) => d.day === todayDow)?.sessions ?? []).filter((s) => !s.optional) : [];
   const weighInDays = useMemo(() => new Set(weights.filter((w) => w.kg != null).map((w) => w.day)), [weights]);
   const photoDays = useMemo(() => new Set(progressPhotos.map((p) => p.day)), [progressPhotos]);
   const daysSinceLastWeighIn = daysSinceLastLog(weighInDays, todayStr);
@@ -85,7 +85,7 @@ export default function DashboardScreen() {
       const waterPct = coachContext.waterPct;
       const waterMl = water[todayStr] ?? 0;
       const glassesLeft = waterPct == null ? 8 : waterPct >= 1 ? 0 : waterPct > 0 ? Math.ceil(((1 - waterPct) / waterPct) * waterMl / 250) : 8;
-      const tomorrowSessions = plan ? plan.data.days.find((d) => d.day === (todayDow + 1) % 7)?.sessions ?? [] : [];
+      const tomorrowSessions = plan ? (plan.data.days.find((d) => d.day === (todayDow + 1) % 7)?.sessions ?? []).filter((s) => !s.optional) : [];
       refreshTodayNotifications({
         today: {
           meals: { breakfast: mealsToday.has('breakfast'), lunch: mealsToday.has('lunch'), dinner: mealsToday.has('dinner') },

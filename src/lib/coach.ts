@@ -1,7 +1,7 @@
 // The dashboard's coach. Goku (male) pushes with insults and ego. Mirko (female) is soft spoken and motivating.
 import type { CoachStyle } from './coachStyle';
 import { computeTargets, totals } from './nutrition';
-import { WEEK_ORDER } from './planner';
+import { hasPlanned, WEEK_ORDER } from './planner';
 import { todayISO } from './progress';
 
 export type Tone = 'good' | 'bad' | 'neutral';
@@ -52,7 +52,7 @@ export function buildCoachContext(args: {
     x.setDate(monday.getDate() + i);
     weekDates[d] = iso(x);
   });
-  const plannedDays = plan ? plan.data.days.filter((d) => d.sessions.length > 0) : [];
+  const plannedDays = plan ? plan.data.days.filter((d) => hasPlanned(d.sessions)) : [];
   const weekPlanned = plannedDays.length;
   const weekDone = plannedDays.filter((d) => loggedDates.has(weekDates[d.day])).length;
 
@@ -89,7 +89,7 @@ function daysBack(from: string, n: number) {
 
 /** Streak = planned sessions done in a row, ignoring rest days. Any missed planned day ends it. */
 export function trainingStreak(days: PlanDay[], logged: Set<string>, today = todayISO()) {
-  const planned = (d: Date) => days.some((x) => x.day === d.getDay() && x.sessions.length > 0);
+  const planned = (d: Date) => days.some((x) => x.day === d.getDay() && hasPlanned(x.sessions));
   let streak = logged.has(today) ? 1 : 0;
   let missedWeek = 0;
   let missedYesterday = false;
@@ -581,7 +581,7 @@ export function coachMessage(
 ): Coach {
   const { streak, missedWeek, missedYesterday } = trainingStreak(days, logged, today);
   const dow = new Date(`${today}T12:00:00`).getDay();
-  const plannedToday = days.some((x) => x.day === dow && x.sessions.length > 0);
+  const plannedToday = days.some((x) => x.day === dow && hasPlanned(x.sessions));
   const doneToday = logged.has(today);
   const words: Record<Situation, Line> = voice === 'female' ? MIRKO : GOKU;
 
