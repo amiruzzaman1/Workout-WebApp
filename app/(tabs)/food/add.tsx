@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { dayLabel } from '../../../src/components/AppHeader';
 import { BarcodeScanner } from '../../../src/components/BarcodeScanner';
+import { LabelScan } from '../../../src/components/LabelScan';
 import { Button, Chip, Eyebrow, H1, hovered, IconBadge, Input, Label, P, Row, Screen, smooth } from '../../../src/components/ui';
 import { libToFood, searchLibrary } from '../../../src/lib/foodData';
 import { MEAL_STYLE } from '../../../src/lib/meals';
 import { computeTargets, entryToFood, fmtAmount, fmtEnergy, Food, FoodMeasure, KJ_PER_KCAL, MEAL_LABELS, MEALS, Meal, measureKey, round, scaleFood, toKJ } from '../../../src/lib/nutrition';
+import { LabelRead } from '../../../src/lib/labelParse';
 import { lookupBarcode, searchFoods } from '../../../src/lib/off';
 import { todayISO } from '../../../src/lib/progress';
 import { foodToItem, recipeToFood } from '../../../src/lib/recipes';
@@ -418,6 +420,23 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
   }
   const energyKcal = energyUnit === 'kJ' ? num(v.kcal) / KJ_PER_KCAL : num(v.kcal);
 
+  /** Fills the boxes from a label photo. Only what was read is changed, and every box stays editable. */
+  function applyLabel(r: LabelRead) {
+    const t = (n: number | null, old: string) => (n == null ? old : String(Math.round(n * 10) / 10));
+    setBasis('weight');
+    if (r.per != null) { setPerUnit(r.perUnit); }
+    if (r.energy) setEnergyUnit(r.energy.unit);
+    setV((x) => ({
+      ...x,
+      per: r.per != null ? String(r.per) : x.per,
+      kcal: r.energy ? String(r.energy.value) : x.kcal,
+      p: t(r.protein, x.p), c: t(r.carbs, x.c), f: t(r.fat, x.f),
+      sugars: t(r.sugars, x.sugars), satFat: t(r.satFat, x.satFat), fibre: t(r.fibre, x.fibre),
+      sodium: r.sodiumMg == null ? x.sodium : String(r.sodiumMg),
+    }));
+    if (r.fibre != null || r.sodiumMg != null) setShowMore(true);
+  }
+
   async function submit() {
     const isPiece = basis === 'piece';
     // Bulk foods are sometimes labelled per kg or per litre; convert to the per 100 g/ml the app stores.
@@ -455,7 +474,8 @@ function QuickAdd({ onDone, initialName = '', initialBarcode = null, initial, su
 
   return (
     <View style={{ gap: 4 }}>
-      <P muted style={{ fontSize: 13 }}>Type what's on the label. Everyone using the app will see this food, so please double check the numbers.</P>
+      <LabelScan onRead={applyLabel} />
+      <P muted style={{ fontSize: 13 }}>Type what's on the label, or read it from a photo above. Everyone using the app will see this food, so please double check the numbers.</P>
       <Label>Food name</Label>
       <Input value={v.name} onChangeText={set('name')} placeholder="e.g. Chicken breast, cooked" />
       <Label>Brand (optional)</Label>
